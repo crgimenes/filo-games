@@ -1,0 +1,9 @@
+; The fire draws itself as it burns; a paint only writes the lines around
+; it. A blank canvas means the screen was just loaded, resized or painted
+; over, and the fire is kindled again.
+(if FRESH (do (measure) (kindle)))
+
+(footer "fire")
+(attr A_DIM)
+(print-at 0 1 (if lit "SPACE puts it out · ESC leaves" "SPACE lights it · ESC leaves"))
+(attr 0)

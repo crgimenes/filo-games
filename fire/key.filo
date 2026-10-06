@@ -1,0 +1,4 @@
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((= KEY 32) (toggle))
+  (else #t))

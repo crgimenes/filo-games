@@ -1,0 +1,198 @@
+; "down": the sky falls past the ship, and the ship only moves sideways.
+;
+; The sky is not kept anywhere but on the screen. A tick scrolls the field
+; up by one row — one call, however wide the sky is — sows rocks along the
+; new bottom row, and then asks the cell the ship is standing in what is
+; in it. The exhaust the ship leaves is a cell like any other: it rises
+; with the world and keeps the colour it was born with, so the trail comes
+; out striped without anything ageing it.
+;
+; Writing it this way is not only short. Filo gives a global's value room
+; that is never taken back, so a list rebuilt every tick fills the arena
+; and the game stops after a few hundred of them; what lives here are
+; numbers, and a number costs nothing to keep. The screen holds the rest.
+
+; Centring lands on half a column whenever the widths differ by an odd
+; number, and a cell is a cell: floor picks the left one.
+(def centred
+  (fn (row text) (print-at row (floor (/ (- W (text-width text)) 2)) text)))
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+(keep-canvas)
+
+(def STEP_MS 150)
+(def W_MIN 20)
+(def H_MIN 8)
+(def TOP 1) ; the field starts under the score line
+
+; The sky starts thin — a rock every thirty columns or so — and closes in
+; as the game goes on: the gap is the difficulty, and it is the only one.
+(def GAP_START 60)
+(def GAP_MIN 6)
+(def GAP_EVERY 30)
+(def PRIZE_ODDS 10) ; one row in ten carries something worth catching
+(def LIVES 3)
+
+; what the cells say, as code points: a rock, the three prizes, the
+; exhaust, and nothing at all
+(def ROCK 42)
+(def COIN 36)
+(def LIFE 43)
+(def SHIELD 111)
+(def EXHAUST 118)
+(def EMPTY 32)
+
+(def FW 0)
+(def FH 0)
+(def SHIP 0)
+(def px 0)
+(def score 0)
+(def best 0)
+(def lives LIVES)
+(def shield #f)
+(def gap GAP_START)
+(def turns 0)
+(def over #f)
+(def cramped #f)
+(def waited 0)
+
+(def ship-row (fn () (+ TOP SHIP)))
+
+; A row of sky, sown left to right: the gap between rocks is the game's
+; whole difficulty curve.
+(def sow-from
+  (fn (x y)
+    (let ((at (+ x 1 (random gap))))
+      (if (< at FW)
+        (do
+          (print-at y at "*")
+          (sow-from at y))))))
+
+(def sow
+  (fn ()
+    (let ((y (+ TOP FH -1)))
+      (do
+        (fg 8)
+        (sow-from -1 y)
+        (if (= (random PRIZE_ODDS) 0)
+          (let ((at (random FW)))
+            (cond
+              ((= (random 3) 0) (do (fg 3) (print-at y at "$")))
+              ((= (random 2) 0) (do (fg 2) (print-at y at "+")))
+              (else (do (fg 6) (print-at y at "o"))))))
+        (fg C_DEFAULT)))))
+
+; The ship, inside its shield when it has one. A bracket is only drawn on
+; a cell that is empty: the screen is the world, so anything written over
+; a rock would rub it out.
+(def draw-ship
+  (fn ()
+    (let ((y (ship-row)))
+      (do
+        (fg 15)
+        (attr A_BOLD)
+        (print-at y px "v")
+        (attr 0)
+        (if shield
+          (do
+            (fg 6)
+            (if (and (> px 0) (= (cell-at y (- px 1)) EMPTY)) (print-at y (- px 1) "("))
+            (if (and (< (+ px 1) FW) (= (cell-at y (+ px 1)) EMPTY)) (print-at y (+ px 1) ")"))))
+        (fg C_DEFAULT)))))
+
+; Taking the ship off the screen again: its own cell, and the brackets if
+; they are the ones it drew. Blanking three cells would rub out whatever
+; rock happened to be beside it, which would make weaving a way to clear
+; the sky.
+(def BRA 40)
+(def KET 41)
+
+(def unship
+  (fn ()
+    (let ((y (ship-row)))
+      (do
+        (print-at y px " ")
+        (if (and (> px 0) (= (cell-at y (- px 1)) BRA)) (print-at y (- px 1) " "))
+        (if (and (< (+ px 1) FW) (= (cell-at y (+ px 1)) KET)) (print-at y (+ px 1) " "))))))
+
+(def measure
+  (fn ()
+    (do
+      (set FW W)
+      (set FH (- H 3))
+      (set SHIP (floor (/ FH 2)))
+      (set cramped (or (< FW W_MIN) (< FH H_MIN))))))
+
+(def reset
+  (fn ()
+    (if (not cramped)
+      (do
+        (set px (floor (/ FW 2)))
+        (set score 0)
+        (set lives LIVES)
+        (set shield #f)
+        (set gap GAP_START)
+        (set turns 0)
+        (set over #f)
+        (set waited 0)
+        (fill TOP 0 FH FW " ")
+        (draw-ship)))))
+
+; A rock where the ship is: the shield takes the first one, and after that
+; it costs a life.
+(def hit
+  (fn ()
+    (if shield
+      (set shield #f)
+      (do
+        (set lives (- lives 1))
+        (if (< lives 1)
+          (do
+            (set over #t)
+            (if (> score best) (set best score))))))))
+
+(def catch
+  (fn (c)
+    (cond
+      ((= c ROCK) (hit))
+      ((= c COIN) (set score (+ score 50)))
+      ((= c LIFE) (set lives (+ lives 1)))
+      ((= c SHIELD) (set shield #t))
+      (else #f))))
+
+(def step
+  (fn ()
+    (do
+      ; what rises is the exhaust, so it has to be in the cell before the
+      ; scroll: the ship is drawn over it again at the end
+      (fg (+ 1 (% turns 6)))
+      (print-at (ship-row) px "v")
+      (fg C_DEFAULT)
+      (scroll TOP 0 FH FW -1)
+      (sow)
+      ; the point is for the row survived, and it counts before the row is
+      ; looked at: the tick that ends the run is one the ship did fly
+      (set score (+ score 1))
+      (set turns (+ turns 1))
+      (if (= (% turns GAP_EVERY) 0) (if (> gap GAP_MIN) (set gap (- gap 1))))
+      (catch (cell-at (ship-row) px))
+      (if (not over) (draw-ship)))))
+
+; Sideways is answered at once, not at the next tick. The cell the ship
+; leaves goes blank: whatever was under it, the ship had already taken it.
+(def steer
+  (fn (d)
+    (let ((n (+ px d)))
+      (if (and (>= n 0) (< n FW))
+        (do
+          (unship)
+          (set px n)
+          (draw-ship))))))

@@ -1,0 +1,95 @@
+; The fire of the PlayStation DOOM, in Filo: a row of white heat at the
+; bottom, and every cell above takes the heat of the one under it, a little
+; cooler, a little to the side.
+;
+; There is no array to keep the heat in, so it is kept in the cells: each
+; cell's tag holds its heat, written with the colour that shows it and read
+; back by the cell above on the next frame. The screen is the fire's memory,
+; as the snake's den is the snake's.
+;
+; A frame visits every cell of the fire once, and a run has a step limit,
+; so the fire is as wide and as tall as a frame can afford: the rest of the
+; screen stays dark.
+
+(keep-canvas)
+
+(def STEP_MS 40)
+(def HOT 36)
+(def FIRE_W_MAX 80)
+(def FIRE_H_MAX 22)
+
+; heat to colour, three heats a step: black, the reds, orange, yellow, white
+(def PAL (list 16 52 88 124 160 196 202 208 214 220 226 228 231))
+(def colour (fn (h) (nth PAL (floor (/ h 3)))))
+
+(def FW 0)    ; the fire's columns
+(def FH 0)    ; and rows
+(def LEFT 0)  ; where it starts
+(def TOP 0)
+(def lit #t)
+(def waited 0)
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+; one cell of the fire at its heat: the colour shows it, the tag keeps it
+(def burn
+  (fn (row col h)
+    (bg (colour h))
+    (tag h)
+    (print-at row col " ")))
+
+(def measure
+  (fn ()
+    (set FW (math-min W FIRE_W_MAX))
+    (set FH (math-min (- H 2) FIRE_H_MAX))
+    (set LEFT (floor (/ (- W FW) 2)))
+    (set TOP (- H 1 FH))))
+
+; Dark everywhere, and the source along the bottom.
+(def kindle
+  (fn ()
+    (bg 16)
+    (tag 0)
+    (fill 0 0 (- H 1) W " ")
+    (fold (fn (a x) (do (burn (- (+ TOP FH) 1) (+ LEFT x) (if lit HOT 0)) a)) 0 (range FW))
+    (bg C_DEFAULT)
+    (tag 0)))
+
+; A frame, top row first: each row is written from the one under it before
+; that one changes, so a frame moves the heat up by one row, as DOOM's does.
+; The heat lands up to a column to either side and cools by 0, 1 or 3:
+; that is the flicker and the wind. DOOM's fire is 168 rows tall and cools
+; a point half the time; a terminal's is a few dozen, so it cools faster to
+; reach the reds before the top.
+(def frame
+  (fn ()
+    (fold
+      (fn (a y)
+        (let ((row (+ TOP y)))
+          (fold
+            (fn (b x)
+              (let ((r (random 3))
+                    (h (tag-at (+ row 1) (+ LEFT x)))
+                    (to (math-max 0 (math-min (- FW 1) (+ x (- 1 r))))))
+                (do (burn row (+ LEFT to) (math-max 0 (- h (floor (/ (* r 3) 2))))) b)))
+            a
+            (range FW))))
+      0
+      (range (- FH 1)))
+    (bg C_DEFAULT)
+    (tag 0)))
+
+; Space puts the source out, or lights it again: the fire dies upward.
+(def toggle
+  (fn ()
+    (set lit (not lit))
+    (fold (fn (a x) (do (burn (- (+ TOP FH) 1) (+ LEFT x) (if lit HOT 0)) a)) 0 (range FW))
+    (bg C_DEFAULT)
+    (tag 0)))

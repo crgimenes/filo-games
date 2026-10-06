@@ -1,0 +1,7 @@
+(cond
+  ((= KEY KEY_ESC) (done))
+  (cramped #t)
+  (over (if (or (= KEY 114) (= KEY 82)) (reset) #t))
+  ((or (= KEY KEY_LEFT) (or (= KEY 104) (= KEY 97))) (steer -1))
+  ((or (= KEY KEY_RIGHT) (or (= KEY 108) (= KEY 100))) (steer 1))
+  (else #t))

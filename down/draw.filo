@@ -1,0 +1,45 @@
+; The sky draws itself as it moves; a paint only writes the lines around
+; it. A blank canvas means the screen was just loaded, resized or painted
+; over, and a sky that is gone starts again.
+(if FRESH (do (measure) (reset)))
+
+(footer "down")
+(fill 0 0 1 W " ")
+
+(cond
+  (cramped
+    (do
+      (attr A_BOLD)
+      (centred (floor (/ H 2)) "not enough sky — make the window bigger")
+      (attr 0)))
+  (else
+    (do
+      (attr A_BOLD)
+      (print-at 0 1 (str-fmt "score %d" score))
+      (attr 0)
+      (attr A_DIM)
+      (print-at 0 16 (str-fmt "best %d" best))
+      (print-at 0 28 "lives")
+      (attr 0)
+      (fg 1)
+      (print-at 0 34 (fold (fn (s i) (str-concat s "v")) "" (range lives)))
+      (fg C_DEFAULT)
+      (if shield (do (fg 6) (print-at 0 (+ 36 lives) "shield") (fg C_DEFAULT)))
+      (if over
+        (do
+          (attr A_BOLD)
+          (fg 9)
+          (centred (+ TOP (floor (/ FH 2)) -1) " CRASH ")
+          (fg C_DEFAULT)
+          (centred (+ TOP (floor (/ FH 2))) (str-fmt " score %d " score))
+          (attr 0))))))
+
+; the canvas keeps what was drawn on it, so a shorter line has to clear
+; the longer one that was there
+(fill (- H 2) 0 1 W " ")
+(attr A_DIM)
+(print-at (- H 2) 1
+  (if over
+    "R flies again · ESC leaves"
+    "left / right · h l · a d steer · $ + o are worth catching · ESC leaves"))
+(attr 0)

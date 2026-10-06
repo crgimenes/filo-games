@@ -1,0 +1,151 @@
+; Snake, in Filo. A cell is two columns wide, so the field reads square in
+; a character box that is twice as tall as it is wide.
+;
+; The state is the screen itself. A game that keeps a list of segments in
+; memory has to copy that list to the display every time it moves; this one
+; writes straight into the cells and reads them back. The walls, the food
+; and every segment are already there to be looked at, so the head asks the
+; cell it is about to enter what is in it instead of searching a list — the
+; display is the only array the program needs, and it is one the player can
+; see. The canvas answers those questions: cell-at says what glyph is in a
+; cell, tag-at the number the script left with it.
+;
+; The one thing the cells cannot show is the order of the segments — a
+; coiled snake gives its tail two neighbours — so each segment carries, in
+; its tag, the direction to the next one. What is left is a handful of
+; numbers, and a number costs nothing to keep.
+
+; Centring lands on half a column whenever the widths differ by an odd
+; number, and a cell is a cell: floor picks the left one.
+(def centred
+  (fn (row text) (print-at row (floor (/ (- W (text-width text)) 2)) text)))
+
+(def single (list "┌" "─" "┐" "│" "┘" "─" "└" "│"))
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+(keep-canvas)
+
+(def STEP_MS 110)
+(def W_MIN 12)
+(def H_MIN 6)
+
+(def UP 0)
+(def DOWN 1)
+(def LEFT 2)
+(def RIGHT 3)
+
+; the code point of the block the food is drawn with
+(def FOOD 9608)
+(def EMPTY 32)
+
+; the head and the tail
+(def hx 0)
+(def hy 0)
+(def tx 0)
+(def ty 0)
+(def dir RIGHT)
+(def want RIGHT)
+(def score 0)
+(def best 0)
+(def over #f)
+(def won #f)
+(def cramped #f)
+(def waited 0)
+; the field, in cells
+(def fw 0)
+(def fh 0)
+
+; Row 0 is the score, the box sits on rows 1 and H-3, the hint on H-2 and
+; the footer on H-1. A cell is two columns.
+(def field-w (fn () (floor (/ (- W 2) 2))))
+(def field-h (fn () (- H 5)))
+
+(def step-x (fn (d) (cond ((= d LEFT) -1) ((= d RIGHT) 1) (else 0))))
+(def step-y (fn (d) (cond ((= d UP) -1) ((= d DOWN) 1) (else 0))))
+
+(def paint
+  (fn (x y glyph colour mark)
+    (fg colour)
+    (tag mark)
+    (print-at (+ y 2) (+ (* x 2) 1) glyph)
+    (tag 0)
+    (fg C_DEFAULT)))
+
+; Off the canvas reads -1, which is as much a wall as the box is.
+(def drawn-at (fn (x y) (cell-at (+ y 2) (+ (* x 2) 1))))
+(def mark-at (fn (x y) (tag-at (+ y 2) (+ (* x 2) 1))))
+
+; Guessing, not looking: sweeping the field for a free cell is thousands of
+; steps, and the step budget is the wall a hook hits first. Enough tries
+; that only a den that is genuinely full runs out of them.
+(def FOOD_TRIES 200)
+
+(def place-food
+  (fn ()
+    (fold
+      (fn (found try)
+        (if found
+          found
+          (let ((x (random fw)) (y (random fh)))
+            (if (= (drawn-at x y) EMPTY) (do (paint x y "██" 1 0) #t) #f))))
+      #f
+      (range FOOD_TRIES))))
+
+(def reset
+  (fn ()
+    (set fw (field-w))
+    (set fh (field-h))
+    (set cramped (or (< fw W_MIN) (< fh H_MIN)))
+    (set dir RIGHT)
+    (set want RIGHT)
+    (set score 0)
+    (set over #f)
+    (set won #f)
+    (set waited 0)
+    (if (not cramped)
+      (do
+        (fill 1 0 (+ fh 2) (+ (* fw 2) 2) " ")
+        (box 1 0 (+ fh 2) (+ (* fw 2) 2) single)
+        (set hx (floor (/ fw 2)))
+        (set hy (floor (/ fh 2)))
+        (set tx hx)
+        (set ty hy)
+        (paint hx hy "██" 10 0)
+        (place-food)))))
+
+; One move. The cell the head enters decides it: food keeps the tail where
+; it is, anything drawn there that is not the tail about to leave is death.
+; The old head becomes a segment that points at the new one, and the tail
+; follows its own mark.
+(def step
+  (fn ()
+    (let ((nx (+ hx (step-x dir)))
+          (ny (+ hy (step-y dir)))
+          (seen (drawn-at nx ny))
+          (ate (= seen FOOD))
+          (free (or (= seen EMPTY) ate (and (= nx tx) (= ny ty)))))
+      (if (not free)
+        (set over #t)
+        (do
+          (paint hx hy "▓▓" 2 (+ dir 1))
+          (if (not ate)
+            (let ((d (- (mark-at tx ty) 1)))
+              (paint tx ty "  " C_DEFAULT 0)
+              (set tx (+ tx (step-x d)))
+              (set ty (+ ty (step-y d)))))
+          (paint nx ny "██" 10 0)
+          (set hx nx)
+          (set hy ny)
+          (if ate
+            (do
+              (set score (+ score 1))
+              (if (> score best) (set best score))
+              (if (not (place-food)) (do (set over #t) (set won #t))))))))))

@@ -1,0 +1,11 @@
+; The donut draws itself as it turns; a paint only sizes the field and
+; adds the line under it. A blank canvas means the screen was just
+; loaded, resized or painted over, so the measurements are taken again.
+(if FRESH (do (measure) (frame)))
+
+(footer "donut")
+(fg 2)
+(attr A_DIM)
+(print-at (- H 2) 0 (if paused "SPACE turns it again · ESC leaves" "SPACE holds it · ESC leaves"))
+(attr 0)
+(fg C_DEFAULT)

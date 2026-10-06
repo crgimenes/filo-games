@@ -1,0 +1,161 @@
+; The spinning donut: Andy Sloan's torus (donut.c, 2011), by way of Gary
+; Boone's Go port, written again in Filo.
+;
+; Two things had to change on the way. A screen has no trigonometry — the
+; math pack registers only what the host can compute, and this one has no
+; libm — so nothing here calls sin or cos: each ring is built once from
+; the angle-addition formula, four multiplies a step, and the frame then
+; only walks it. And there is no array to use as a z-buffer, so the depth
+; of a cell is kept in the cell's own tag: eighteen bits the canvas
+; carries for the script, written with the glyph and read back before the
+; next point lands there.
+;
+; The third thing is about Filo itself. A run's arena gives back what a
+; call took, but only when nothing escaped it, and writing a global is an
+; escape — so the inner loop writes none. State goes round the loops as
+; the pair each ring already holds, and a frame of a thousand points
+; costs the arena almost nothing.
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+(keep-canvas)
+
+(def STEP_MS 50)
+
+; the torus: the tube's radius, the ring's, and how far the eye sits
+(def R1 1)
+(def R2 2)
+(def K2 5)
+
+; cos and sin of one step round the tube (2*pi/32), round the ring
+; (2*pi/64), and of the two turns a frame gives the whole thing. Those two
+; counts are what a frame costs: a run has a step limit, and 32 rings of
+; 64 points is what fits under it with room to spare. The torus is drawn
+; smaller than a square screen would take, so that many points cover it.
+(def TC 0.9807852804)
+(def TS 0.1950903220)
+(def PC 0.9951847267)
+(def PS 0.0980171403)
+(def AC 0.9975510003)
+(def AS 0.0699428473)
+(def BC 0.9995500337)
+(def BS 0.0299955002)
+
+(def RAMP ".,-~:;=!*#$@")
+
+; where the whole thing stands now, as (cos, sin) pairs
+(def ca 1)
+(def sa 0)
+(def cb 1)
+(def sb 0)
+
+; and the scratch the rings are built in, which only init writes
+(def bc 1)
+(def bs 0)
+
+; A ring of n points: each is the pair (cos, sin) of its angle, and the
+; next comes from the one before by the angle-addition formula.
+(def ring
+  (fn (n c s)
+    (do
+      (set bc 1)
+      (set bs 0)
+      (map
+        (fn (i)
+          (let ((c0 bc) (s0 bs))
+            (do
+              (set bc (- (* c0 c) (* s0 s)))
+              (set bs (+ (* s0 c) (* c0 s)))
+              (tuple c0 s0))))
+        (range n)))))
+
+(def TUBE (ring 32 TC TS))
+(def RING (ring 64 PC PS))
+
+(def paused #f)
+(def FH 0)  ; rows the donut has
+(def CX 0)  ; and the middle of them
+(def CY 0)
+(def K1 0)  ; what turns the torus into cells
+(def waited 0)
+
+; A character is about twice as tall as it is wide, so x is doubled and
+; the donut comes out round instead of standing up. The scale is under
+; what donut.c uses for a square screen: the near side of the torus
+; projects larger than its equator, and the footer and the hint keep a
+; row each.
+(def measure
+  (fn ()
+    (let ((rows (- H 2)))
+      (let ((dim (math-min rows (floor (/ W 2)))))
+        (do
+          (set FH rows)
+          (set CX (floor (/ W 2)))
+          (set CY (floor (/ rows 2)))
+          (set K1 (* dim 0.33)))))))
+
+; A whole frame turns the thing A about x and B about z.
+(def turn-frame
+  (fn ()
+    (let ((a (- (* ca AC) (* sa AS)))
+          (b (+ (* sa AC) (* ca AS)))
+          (c (- (* cb BC) (* sb BS)))
+          (d (+ (* sb BC) (* cb BS))))
+      (do (set ca a) (set sa b) (set cb c) (set sb d)))))
+
+; One point of the surface: ct/st say where it sits round the tube, cp/sp
+; where that circle has been carried round the ring, and crx/cry are the
+; point on the tube's circle before the ring turns it.
+;
+; The surface's normal says whether it faces the eye — its z negative —
+; and what faces away is never drawn, which is most of a z-buffer's work
+; for one multiply. What is left is tested against the tag of the cell it
+; would land on: the tag holds 1/z scaled up, so a bigger one is a nearer
+; cell, and a cleared cell carries 0.
+(def point
+  (fn (ct st cp sp crx cry)
+    (if (< (+ (* ca ct sp) (* st sa)) 0)
+      (let ((l (+ (- (* cp ct sb) (* ca ct sp) (* sa st))
+                  (* cb (- (* ca st) (* ct sa sp))))))
+        (if (> l 0)
+          (let ((ooz (/ 1 (+ K2 (* ca crx sp) (* cry sa)))))
+            (let ((x (floor (+ CX (* 2 K1 ooz
+                                     (- (* crx (+ (* cb cp) (* sa sb sp)))
+                                        (* cry ca sb))))))
+                  (y (floor (- CY (* K1 ooz
+                                     (+ (* crx (- (* sb cp) (* sa cb sp)))
+                                        (* cry ca cb))))))
+                  (d (floor (* ooz 100000))))
+              (if (and (and (>= x 0) (< x W)) (and (>= y 0) (< y FH)))
+                (if (> d (tag-at y x))
+                  (let ((i (math-min 11 (floor (* l 8)))))
+                    (do
+                      (tag d)
+                      (print-at y x (str-sub RAMP i (+ i 1))))))))))))))
+
+; The frame: clear the field, which clears the tags with it, then walk the
+; tube and the ring. fold, not map, because nothing wants the list of
+; results a map would pile up.
+(def frame
+  (fn ()
+    (do
+      (tag 0)
+      (fill 0 0 FH W " ")
+      (fg 2) ; green, set once: the pen carries it to every point
+      (fold
+        (fn (acc tp)
+          (letv (ct st) tp
+            (let ((crx (+ R2 (* R1 ct))) (cry (* R1 st)))
+              (fold
+                (fn (a rp) (letv (cp sp) rp (do (point ct st cp sp crx cry) a)))
+                acc
+                RING))))
+        0
+        TUBE))))

@@ -1,0 +1,24 @@
+; The field draws itself as the game moves; a paint only adds the lines
+; around it. Blank cells mean the screen was just loaded, resized or painted
+; over, and the game that lived in them is gone: a new one starts, as the C
+; door does on a resize.
+(if FRESH (reset))
+
+(footer "snake")
+(fill 0 0 1 W " ")
+(attr A_BOLD)
+(print-at 0 0 (str-fmt "score %d   best %d" score best))
+(attr 0)
+
+(cond
+  (cramped (attr A_BOLD) (centred (floor (/ H 2)) "the den is too small")
+    (attr 0))
+  (over (attr A_BOLD) (fg (if won 10 9))
+    (centred (floor (/ H 2)) (if won "YOU FILLED THE DEN" "GAME OVER"))
+    (fg C_DEFAULT)
+    (centred (+ (floor (/ H 2)) 1) (str-fmt "score %d" score))
+    (attr 0)))
+
+(attr A_DIM)
+(print-at (- H 2) 0 "arrows move · R plays again · ESC leaves")
+(attr 0)

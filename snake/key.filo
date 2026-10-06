@@ -1,0 +1,10 @@
+; Turning back on itself is the one move a snake cannot make, so the key
+; that asks for it is ignored rather than refused.
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((or (= KEY KEY_UP) (= KEY 119)) (if (not (= dir DOWN)) (set want UP)))
+  ((or (= KEY KEY_DOWN) (= KEY 115)) (if (not (= dir UP)) (set want DOWN)))
+  ((or (= KEY KEY_LEFT) (= KEY 97)) (if (not (= dir RIGHT)) (set want LEFT)))
+  ((or (= KEY KEY_RIGHT) (= KEY 100)) (if (not (= dir LEFT)) (set want RIGHT)))
+  ((or (= KEY 114) (= KEY 82)) (reset))
+  (else #f))
