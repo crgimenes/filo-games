@@ -72,7 +72,9 @@ fmt:
 fmt-check:
 	$(CLANG_FORMAT) --dry-run --Werror $(SRC)
 
-TIDY_CHECKS = bugprone-*,cert-*,clang-analyzer-*,readability-*,-readability-magic-numbers,-readability-identifier-length,-bugprone-easily-swappable-parameters,-cert-err33-c,-readability-else-after-return,-clang-analyzer-optin.performance.Padding
+# The analyzer's insecureAPI check wants C11 Annex K (memcpy_s, snprintf_s),
+# which no libc this builds on has: off, as in Filo's own gate.
+TIDY_CHECKS = bugprone-*,cert-*,clang-analyzer-*,readability-*,-readability-magic-numbers,-readability-identifier-length,-bugprone-easily-swappable-parameters,-cert-err33-c,-readability-else-after-return,-clang-analyzer-optin.performance.Padding,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
 
 tidy:
 	$(CLANG_TIDY) --quiet --warnings-as-errors='*' --checks='$(TIDY_CHECKS)' $(SRC) \
