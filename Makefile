@@ -25,7 +25,7 @@ HDRS = $(wildcard $(FILO_TERM)/src/*.h) $(FILO)/filo.h
 LDFLAGS ?=
 PREFIX ?= /usr/local
 
-.PHONY: all test fmt fmt-check tidy check qa install dist clean
+.PHONY: all test fmt fmt-check tidy check qa smoke install dist clean
 
 # Installed beside everything else in a PATH, a game's binary says whose it is.
 BINS = $(addprefix bin/filo-,$(GAMES))
@@ -85,7 +85,11 @@ check:
 	cppcheck --enable=warning,style,performance,portability --inline-suppr \
 		--suppress=missingIncludeSystem --error-exitcode=1 $(INC) -DGAME_VERSION='"x"' -DGAME_NAME='"x"' $(SRC)
 
-qa: all fmt-check test tidy check
+# The binary as shipped, on a terminal: it starts, draws, and quits.
+smoke: $(BINS)
+	for b in $(BINS); do sh $(FILO_TERM)/tools/smoke.sh $$b q '\033' q || exit 1; done
+
+qa: all fmt-check test smoke tidy check
 
 install: $(BINS)
 	mkdir -p $(PREFIX)/bin
