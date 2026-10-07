@@ -4,7 +4,7 @@
 extern const uint8_t snake_fbb[];
 extern const size_t snake_fbb_len;
 
-const app_spec app_program = {"filo-snake", GAME_VERSION, false, 0, 0, 0, NULL};
+const app_spec app_program = {GAME_NAME, GAME_VERSION, false, 0, 0, 0, NULL};
 
 static app A;
 

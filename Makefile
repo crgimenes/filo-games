@@ -55,7 +55,7 @@ build/%_fbb.c: %.fbb
 
 $(BINS): bin/filo-%: %/main.c build/%_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c $(HDRS)
 	@mkdir -p bin
-	$(CC) -O2 $(FLAGS) -o $@ $*/main.c build/$*_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c \
+	$(CC) -O2 $(FLAGS) -DGAME_NAME='"$*"' -o $@ $*/main.c build/$*_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c \
 		$(LDFLAGS)
 
 # Each game played for a while under the sanitizers, within a board's budgets.
@@ -79,11 +79,11 @@ TIDY_CHECKS = bugprone-*,cert-*,clang-analyzer-*,readability-*,-readability-magi
 
 tidy:
 	$(CLANG_TIDY) --quiet --warnings-as-errors='*' --checks='$(TIDY_CHECKS)' $(SRC) \
-		-- -std=c11 -D_DEFAULT_SOURCE $(INC) -DGAME_VERSION='"x"'
+		-- -std=c11 -D_DEFAULT_SOURCE $(INC) -DGAME_VERSION='"x"' -DGAME_NAME='"x"'
 
 check:
 	cppcheck --enable=warning,style,performance,portability --inline-suppr \
-		--suppress=missingIncludeSystem --error-exitcode=1 $(INC) -DGAME_VERSION='"x"' $(SRC)
+		--suppress=missingIncludeSystem --error-exitcode=1 $(INC) -DGAME_VERSION='"x"' -DGAME_NAME='"x"' $(SRC)
 
 qa: all fmt-check test tidy check
 
@@ -95,7 +95,7 @@ install: $(BINS)
 DIST_DIR ?= dist
 dist: $(GAMES:%=build/%_fbb.c)
 	for g in $(GAMES); do \
-		sh $(FILO_TERM)/tools/dist.sh $(DIST_DIR) filo-$$g -O2 $(FLAGS) $$g/main.c build/$${g}_fbb.c \
+		sh $(FILO_TERM)/tools/dist.sh $(DIST_DIR) filo-$$g -O2 $(FLAGS) -DGAME_NAME="\"$$g\"" $$g/main.c build/$${g}_fbb.c \
 			$(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c || exit 1; \
 	done
 
