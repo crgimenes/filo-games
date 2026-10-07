@@ -1,6 +1,6 @@
 # filo-games: games and demos written in Filo, each its own program — a
 # bundle (NAME.fbb) any Filo VM with the app's base can load, the board's
-# among them, and a binary (bin/NAME) that carries it.
+# among them, and a binary (bin/filo-NAME) that carries it.
 CC ?= cc
 CLANG_FORMAT ?= clang-format
 CLANG_TIDY ?= clang-tidy
@@ -25,9 +25,10 @@ HDRS = $(wildcard $(FILO_TERM)/src/*.h) $(FILO)/filo.h
 LDFLAGS ?=
 PREFIX ?= /usr/local
 
-.PHONY: all test fmt fmt-check tidy check qa install clean
+.PHONY: all test fmt fmt-check tidy check qa install dist clean
 
-BINS = $(addprefix bin/,$(GAMES))
+# Installed beside everything else in a PATH, a game's binary says whose it is.
+BINS = $(addprefix bin/filo-,$(GAMES))
 
 all: $(BINS) $(GAMES:=.fbb)
 
@@ -52,7 +53,7 @@ $(GAMES:=.fbb): %.fbb: $$(wildcard %/*.filo) build/games.vm $(CLI_DEP)
 build/%_fbb.c: %.fbb
 	sh $(FILO_TERM)/tools/embed.sh $*_fbb $< > $@
 
-$(BINS): bin/%: %/main.c build/%_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c $(HDRS)
+$(BINS): bin/filo-%: %/main.c build/%_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c $(HDRS)
 	@mkdir -p bin
 	$(CC) -O2 $(FLAGS) -o $@ $*/main.c build/$*_fbb.c $(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c \
 		$(LDFLAGS)
@@ -90,5 +91,13 @@ install: $(BINS)
 	mkdir -p $(PREFIX)/bin
 	cp $(BINS) $(PREFIX)/bin/
 
+# What release.sh publishes (VERSION is its tag): each game for macOS and Linux.
+DIST_DIR ?= dist
+dist: $(GAMES:%=build/%_fbb.c)
+	for g in $(GAMES); do \
+		sh $(FILO_TERM)/tools/dist.sh $(DIST_DIR) filo-$$g -O2 $(FLAGS) $$g/main.c build/$${g}_fbb.c \
+			$(LIBS) $(FILOSRC) $(FILO_TERM)/src/tty.c || exit 1; \
+	done
+
 clean:
-	rm -rf build bin $(GAMES:=.fbb)
+	rm -rf build bin dist $(GAMES:=.fbb)
