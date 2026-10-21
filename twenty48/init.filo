@@ -1,0 +1,97 @@
+; 2048, in Filo. The arrows slide every tile as far as it goes; two equal
+; tiles that meet become one of their sum, once a move, and the sum is
+; scored. After a move that changed anything a new tile comes, a 2 nine
+; times in ten, else a 4, on an empty cell. 2048 wins, and the game goes on;
+; a full board with no equal neighbours is over.
+
+(def N 4)
+(def CELL_W 6) ; a tile is six columns by three rows, one column apart
+(def CELL_H 3)
+(def GRID_W (- (* N (+ CELL_W 1)) 1))
+(def GRID_H (* N CELL_H))
+
+(def TILES (list))
+(def SCORE 0)
+(def WON #f)
+
+(def empty (map (fn (i) 0) (range (* N N))))
+(def at (fn (r c) (+ (* r N) c)))
+
+; the cells of each line in the order a move pushes them: the first is where
+; the tiles go
+(def lines
+  (fn (dir)
+    (map
+      (fn (k)
+        (map
+          (fn (j)
+            (cond ((= dir "left") (at k j))
+                  ((= dir "right") (at k (- N 1 j)))
+                  ((= dir "up") (at j k))
+                  (else (at (- N 1 j) k))))
+          (range N)))
+      (range N))))
+
+; one line slid toward its start: (values gained), the values padded with 0
+(def slide
+  (fn (vals)
+    (let ((tiles (filter (fn (v) (> v 0)) vals)))
+      (letv (out gained skip)
+        (fold
+          (fn (st i)
+            (letv (out gained skip) st
+              (cond
+                (skip (tuple out gained #f))
+                ((and (< (+ i 1) (length tiles)) (= (nth tiles i) (nth tiles (+ i 1))))
+                  (tuple (list-append out (* 2 (nth tiles i))) (+ gained (* 2 (nth tiles i))) #t))
+                (else (tuple (list-append out (nth tiles i)) gained #f)))))
+          (tuple (list) 0 #f)
+          (range (length tiles)))
+        (tuple (list-concat out (map (fn (i) 0) (range (- N (length out))))) gained)))))
+
+; the board after a move: (tiles gained)
+(def moved
+  (fn (tiles dir)
+    (fold
+      (fn (st line)
+        (letv (board gained) st
+          (letv (vals g) (slide (map (fn (i) (nth board i)) line))
+            (tuple
+              (map (fn (j) (let ((k (index-in line j))) (if (>= k 0) (nth vals k) (nth board j)))) (range (* N N)))
+              (+ gained g)))))
+      (tuple tiles 0)
+      (lines dir))))
+
+(def same? (fn (a b) (= (length (filter (fn (i) (= (nth a i) (nth b i))) (range (* N N)))) (* N N))))
+
+(def index-in
+  (fn (l x) (fold (fn (found i) (if (and (< found 0) (= (nth l i) x)) i found)) -1 (range (length l)))))
+
+(def spawn
+  (fn (tiles)
+    (let ((free (filter (fn (i) (= (nth tiles i) 0)) (range (* N N)))))
+      (if (is-empty free)
+        tiles
+        (let ((cell (nth free (random (length free)))) (v (if (= (random 10) 0) 4 2)))
+          (map (fn (i) (if (= i cell) v (nth tiles i))) (range (* N N))))))))
+
+(def can-move?
+  (fn (tiles)
+    (> (length (filter (fn (d) (letv (b g) (moved tiles d) (not (same? b tiles)))) (list "left" "right" "up" "down"))) 0)))
+
+(def move
+  (fn (dir)
+    (letv (board gained) (moved TILES dir)
+      (if (same? board TILES)
+        #t
+        (do
+          (set TILES (spawn board))
+          (set SCORE (+ SCORE gained))
+          (if (> (length (filter (fn (v) (>= v 2048)) TILES)) 0) (set WON #t) #t))))))
+
+(def new-game (fn () (set TILES (spawn (spawn empty))) (set SCORE 0) (set WON #f)))
+
+(def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))
+(def gy (fn () (math-max 2 (floor (/ (- H GRID_H) 2)))))
+
+(new-game)

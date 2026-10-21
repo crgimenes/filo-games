@@ -1,0 +1,43 @@
+; Mastermind, in Filo. A code of four pegs, each one of six colours
+; (repeats allowed), is to be cracked in ten guesses. Each guess is told how
+; many pegs are right in colour and place (a full dot) and how many more
+; are a right colour in the wrong place (an empty one). Colours are typed as
+; the digits 1 to 6.
+
+(def PEGS 4)
+(def COLOURS 6)
+(def TRIES 10)
+
+(def SECRET (list))
+(def GUESSES (list)) ; each (tuple guess exact near)
+(def TYPED (list))
+
+(def count-of (fn (l v) (length (filter (fn (x) (= x v)) l))))
+
+; (exact near) for a guess against a code
+(def score
+  (fn (code guess)
+    (let ((exact (length (filter (fn (i) (= (nth code i) (nth guess i))) (range PEGS))))
+          (common (fold + 0 (map (fn (c) (math-min (count-of code c) (count-of guess c))) (range 1 (+ COLOURS 1))))))
+      (tuple exact (- common exact)))))
+
+(def solved? (fn () (and (not (is-empty GUESSES)) (letv (g e n) (nth GUESSES (- (length GUESSES) 1)) (= e PEGS)))))
+(def over? (fn () (or (solved?) (>= (length GUESSES) TRIES))))
+
+(def new-game
+  (fn ()
+    (set SECRET (map (fn (i) (+ 1 (random COLOURS))) (range PEGS)))
+    (set GUESSES (list))
+    (set TYPED (list))))
+
+(def type-peg (fn (v) (if (or (over?) (>= (length TYPED) PEGS)) #t (set TYPED (list-append TYPED v)))))
+(def erase (fn () (if (is-empty TYPED) #t (set TYPED (map (fn (i) (nth TYPED i)) (range (- (length TYPED) 1)))))))
+(def try
+  (fn ()
+    (if (or (over?) (< (length TYPED) PEGS))
+      #t
+      (letv (e n) (score SECRET TYPED)
+        (set GUESSES (list-append GUESSES (tuple TYPED e n)))
+        (set TYPED (list))))))
+
+(new-game)

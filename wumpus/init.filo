@@ -1,0 +1,120 @@
+; Hunt the Wumpus (Gregory Yob, 1973), in Filo. The cave is a dodecahedron:
+; twenty rooms, three tunnels each. Somewhere is the wumpus, asleep; two
+; rooms have bottomless pits, two have super bats that carry you off. You
+; smell the wumpus, feel a pit's draft and hear bats from a room next door.
+; Five crooked arrows go through up to five rooms each: a room that is no
+; tunnel from the one before sends the arrow down a tunnel at random. Kill
+; the wumpus to win; a miss may wake it, and an awake wumpus moves.
+
+(def CAVE
+  (list (list) (list 2 5 8) (list 1 3 10) (list 2 4 12) (list 3 5 14) (list 1 4 6) (list 5 7 15)
+        (list 6 8 17) (list 1 7 9) (list 8 10 18) (list 2 9 11) (list 10 12 19) (list 3 11 13)
+        (list 12 14 20) (list 4 13 15) (list 6 14 16) (list 15 17 20) (list 7 16 18) (list 9 17 19)
+        (list 11 18 20) (list 13 16 19)))
+(def ROOMS 20)
+(def LOG_MAX 14)
+
+(def ROOM 1)
+(def WUMPUS 1)
+(def PITS (list))
+(def BATS (list))
+(def ARROWS 5)
+(def OVER #f)
+(def LOG (list))
+
+(def tunnels (fn (r) (nth CAVE r)))
+(def next-to? (fn (a b) (> (length (filter (fn (t) (= t b)) (tunnels a))) 0)))
+(def has? (fn (l x) (> (length (filter (fn (y) (= y x)) l)) 0)))
+
+(def say
+  (fn (line)
+    (let ((l (list-append LOG line)))
+      (set LOG (if (> (length l) LOG_MAX) (map (fn (i) (nth l (+ i (- (length l) LOG_MAX)))) (range LOG_MAX)) l)))))
+
+; distinct random rooms, as many as asked
+(def distinct
+  (fn (n taken)
+    (if (= n 0)
+      taken
+      (let ((r (+ 1 (random ROOMS))))
+        (if (has? taken r) (distinct n taken) (distinct (- n 1) (list-append taken r)))))))
+
+(def look
+  (fn ()
+    (let ((t (tunnels ROOM)))
+      (if (has? t WUMPUS) (say "I smell a wumpus!") #t)
+      (if (> (length (filter (fn (p) (has? t p)) PITS)) 0) (say "I feel a draft.") #t)
+      (if (> (length (filter (fn (b) (has? t b)) BATS)) 0) (say "Bats nearby!") #t)
+      (say (str-fmt "You are in room %d. Tunnels lead to %d, %d, %d." ROOM (nth t 0) (nth t 1) (nth t 2))))))
+
+(def lose (fn (why) (say why) (say "Ha ha ha - you lose! Type new to play again.") (set OVER #t)))
+(def win (fn () (say "Aha! You got the wumpus!") (say "Hee hee hee - the wumpus'll get you next time! Type new.") (set OVER #t)))
+
+; the wumpus, awake, moves three times in four
+(def wake
+  (fn ()
+    (if (< (random 4) 3) (set WUMPUS (nth (tunnels WUMPUS) (random 3))) #t)
+    (if (= WUMPUS ROOM) (lose "Tsk tsk tsk - the wumpus got you!") #t)))
+
+; what the room you walk into does to you
+(def enter
+  (fn (r)
+    (set ROOM r)
+    (cond
+      ((= ROOM WUMPUS) (do (say "Oops! Bumped a wumpus!") (wake) (if OVER #t (look))))
+      ((has? PITS ROOM) (lose "YYYIIIIEEEE . . . fell in a pit!"))
+      ((has? BATS ROOM) (do (say "Zap - super bat snatch! Elsewhereville for you!") (enter (+ 1 (random ROOMS)))))
+      (else (look)))))
+
+(def move
+  (fn (r)
+    (if (next-to? ROOM r) (enter r) (do (say (str-fmt "No tunnel to room %d from here." r)) (look)))))
+
+; the arrow's flight through the rooms asked, from where it is
+(def fly
+  (fn (at path)
+    (cond
+      ((is-empty path) (say "Missed!"))
+      (else
+        (let ((to (if (next-to? at (head path)) (head path) (nth (tunnels at) (random 3)))))
+          (cond
+            ((= to WUMPUS) (win))
+            ((= to ROOM) (lose "Ouch! The arrow got you!"))
+            (else (fly to (tail path)))))))))
+
+(def shoot
+  (fn (path)
+    (cond
+      ((or (is-empty path) (> (length path) 5)) (say "An arrow flies through one to five rooms: s 3 4 5"))
+      (else
+        (do
+          (set ARROWS (- ARROWS 1))
+          (fly ROOM path)
+          (if OVER
+            #t
+            (do
+              (wake)
+              (cond (OVER #t)
+                    ((= ARROWS 0) (lose "You are out of arrows."))
+                    (else (look))))))))))
+
+(def new-game
+  (fn ()
+    (let ((places (distinct 6 (list))))
+      (set ROOM (nth places 0))
+      (set WUMPUS (nth places 1))
+      (set PITS (list (nth places 2) (nth places 3)))
+      (set BATS (list (nth places 4) (nth places 5)))
+      (set ARROWS 5)
+      (set OVER #f)
+      (set LOG (list))
+      (say "Hunt the Wumpus. m ROOM moves; s ROOM... shoots; new starts over.")
+      (look))))
+
+; the words of a command as numbers; -1 for one that is no room
+(def rooms-of
+  (fn (words) (map (fn (w) (if (digits? w) (let ((n (number w))) (if (and (>= n 1) (<= n ROOMS)) n -1)) -1)) words)))
+(def digits?
+  (fn (s) (and (> (str-len s) 0) (= (length (filter (fn (i) (str-find (str-sub s i (+ i 1)) "0123456789")) (range (str-len s)))) (str-len s)))))
+
+(new-game)

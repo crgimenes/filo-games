@@ -1,0 +1,14 @@
+; A line typed: "m 5" (or just 5) moves, "s 5 6 7" shoots, "new" starts
+; over; anything else is answered with how to say it.
+(let ((words (filter (fn (w) (not (is-empty w))) (str-split " " (str-lower (str-trim (input-text)))))))
+  (cond
+    ((is-empty words) #t)
+    ((= (head words) "new") (new-game))
+    (OVER (say "The hunt is over. Type new to play again."))
+    (else
+      (let ((verb (head words)) (rest (rooms-of (tail words))))
+        (cond
+          ((and (= (length words) 1) (> (head (rooms-of words)) 0)) (move (head (rooms-of words))))
+          ((and (= verb "m") (= (length rest) 1) (> (head rest) 0)) (move (head rest)))
+          ((and (= verb "s") (= (length (filter (fn (r) (< r 1)) rest)) 0)) (shoot rest))
+          (else (say "m ROOM moves, s ROOM ROOM... shoots (up to five), new starts over.")))))))

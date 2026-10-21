@@ -1,0 +1,9 @@
+; The arrows (or w a s d) slide; r deals a new game.
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((or (= KEY KEY_UP) (= KEY 119)) (move "up"))
+  ((or (= KEY KEY_DOWN) (= KEY 115)) (move "down"))
+  ((or (= KEY KEY_LEFT) (= KEY 97)) (move "left"))
+  ((or (= KEY KEY_RIGHT) (= KEY 100)) (move "right"))
+  ((or (= KEY 114) (= KEY 82)) (new-game))
+  (else #f))

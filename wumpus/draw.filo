@@ -1,0 +1,17 @@
+; The story so far, newest at the bottom, then the prompt; the arrows left
+; on the title line.
+(let ((left (math-max 0 (floor (/ (- W 72) 2))))
+      (top (math-max 0 (- H LOG_MAX 4))))
+  (fg 214)
+  (attr A_BOLD)
+  (print-at top left "HUNT THE WUMPUS")
+  (attr 0)
+  (fg 244)
+  (print-at top (+ left 17) (str-fmt "arrows %d" ARROWS))
+  (fg 252)
+  (map (fn (i) (print-at (+ top 2 i) left (nth LOG i))) (range (length LOG)))
+  (fg 214)
+  (print-at (+ top LOG_MAX 3) left ">")
+  (fg 252)
+  (input-at (+ top LOG_MAX 3) (+ left 2) (math-max 10 (- (math-min W 72) 3)) 40 #f)
+  (fg C_DEFAULT))

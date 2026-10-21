@@ -1,0 +1,9 @@
+; The digits 1 to 6 type a peg, Backspace takes the last back, Enter tries
+; the four; r deals a new code.
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((and (>= KEY 49) (<= KEY 54)) (type-peg (- KEY 48)))
+  ((or (= KEY 127) (= KEY 8)) (erase))
+  ((or (= KEY 13) (= KEY 10)) (try))
+  ((or (= KEY 114) (= KEY 82)) (new-game))
+  (else #f))

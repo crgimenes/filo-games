@@ -1,0 +1,48 @@
+; Ten rows, the guesses so far and the one being typed: each peg its colour
+; with its digit, then the answer, a full dot for each right place and an
+; empty one for each right colour elsewhere. Under them how it goes.
+(def INKS (list 196 214 226 46 39 201))
+(def ROW_W 26)
+
+(def peg
+  (fn (row col v)
+    (bg (nth INKS (- v 1)))
+    (fg 16)
+    (attr A_BOLD)
+    (print-at row col (str-concat " " (string v) " "))
+    (attr 0)
+    (bg C_DEFAULT)))
+
+(let ((x0 (math-max 0 (floor (/ (- W ROW_W) 2))))
+      (y0 (math-max 2 (floor (/ (- H (+ TRIES 4)) 2)))))
+  (fg 214)
+  (attr A_BOLD)
+  (print-at (- y0 2) (floor (/ (- W 10) 2)) "MASTERMIND")
+  (attr 0)
+  (map
+    (fn (r)
+      (let ((row (+ y0 r)))
+        (fg 244)
+        (print-at row x0 (str-fmt "%2d" (+ r 1)))
+        (cond
+          ((< r (length GUESSES))
+            (letv (g e n) (nth GUESSES r)
+              (map (fn (i) (peg row (+ x0 3 (* i 4)) (nth g i))) (range PEGS))
+              (fg 230)
+              (print-at row (+ x0 20) (str-concat (str-join "" (map (fn (i) "●") (range e)))
+                                        (str-join "" (map (fn (i) "○") (range n)))))))
+          ((and (= r (length GUESSES)) (not (over?)))
+            (map (fn (i) (if (< i (length TYPED)) (peg row (+ x0 3 (* i 4)) (nth TYPED i))
+                           (do (fg 240) (print-at row (+ x0 3 (* i 4)) " _ "))))
+              (range PEGS)))
+          (else (do (fg 237) (map (fn (i) (print-at row (+ x0 3 (* i 4)) " · ")) (range PEGS)))))))
+    (range TRIES))
+  (fg 250)
+  (let ((say (cond ((solved?) (str-fmt "Cracked in %d!  r plays again" (length GUESSES)))
+                   ((over?) (str-concat "The code was " (str-join " " (map string SECRET)) "  r plays again"))
+                   (else (str-fmt "guess %d of %d" (+ (length GUESSES) 1) TRIES)))))
+    (print-at (+ y0 TRIES 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
+  (fg 244)
+  (let ((keys "1-6 colours · backspace erases · enter tries · esc leaves"))
+    (print-at (+ y0 TRIES 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+  (fg C_DEFAULT))

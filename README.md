@@ -13,6 +13,10 @@ the loop are [filo-term](https://github.com/crgimenes/filo-term)'s app.
 | `filo-snake` | Snake; the screen is the game's memory: the head asks the cell it enters what is in it |
 | `filo-down` | a falling sky to steer through, catching what is worth catching |
 | `filo-fire` | the fire of the PlayStation DOOM; the heat of each cell lives in the cell |
+| `filo-lights` | Lights Out: a press turns a light and its four neighbours; make the board dark (every puzzle is made by pressing a dark one, so it has a solution) |
+| `filo-twenty48` | 2048: the arrows slide the tiles, two equal ones join into their sum; reach 2048 |
+| `filo-mastermind` | Mastermind: a code of four colours out of six, cracked in ten guesses from the dots each one gets |
+| `filo-wumpus` | Hunt the Wumpus (Gregory Yob, 1973): a cave of twenty rooms, pits, bats and five crooked arrows; typed commands |
 
 Each one keeps to the budgets a board gives a program (20,000 steps a key,
 200,000 a frame), so the same bundle runs on the desktop and on a board.
@@ -23,7 +27,7 @@ Each one keeps to the budgets a board gives a program (20,000 steps a key,
 brew install crgimenes/tap/filo-games
 ```
 
-installs the four games: filo-donut, filo-snake, filo-down and filo-fire.
+installs the eight games: filo-donut, filo-snake, filo-down, filo-fire, filo-lights, filo-twenty48, filo-mastermind and filo-wumpus.
 Or take a binary from the
 [releases](https://github.com/crgimenes/filo-games/releases): macOS
 (universal, arm64 and x86_64) and Linux (static, amd64 and arm64), nothing

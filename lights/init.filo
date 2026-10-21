@@ -1,0 +1,67 @@
+; Lights Out, in Filo. A press turns a light and its four neighbours, on
+; to off and off to on; the game is won when the board is dark. A puzzle is
+; made by pressing a dark board at random, so every one can be solved, and
+; in at most as many presses as made it.
+
+(def N 5)
+(def CELL_W 5) ; a light is five columns by two rows, one column and one row apart
+(def CELL_H 2)
+(def GRID_W (- (* N (+ CELL_W 1)) 1))
+(def GRID_H (- (* N (+ CELL_H 1)) 1))
+(def SCRAMBLE 12)
+
+(def LIT (list))
+(def AT 12)
+(def MOVES 0)
+
+(def dark (map (fn (i) 0) (range (* N N))))
+
+; a row or column number brought back onto the board, past either edge
+(def on-board (fn (v) (- v (* N (floor (/ v N))))))
+
+; the lights a press at i turns: itself and the neighbours on the board
+(def reach
+  (fn (i)
+    (let ((r (floor (/ i N))) (c (on-board i)))
+      (filter (fn (j) (>= j 0))
+        (list i
+          (if (> r 0) (- i N) -1)
+          (if (< r (- N 1)) (+ i N) -1)
+          (if (> c 0) (- i 1) -1)
+          (if (< c (- N 1)) (+ i 1) -1))))))
+
+(def press-on
+  (fn (lights i)
+    (let ((turned (reach i)))
+      (map (fn (j) (if (> (length (filter (fn (t) (= t j)) turned)) 0) (- 1 (nth lights j)) (nth lights j)))
+        (range (* N N))))))
+
+(def lit-count (fn (lights) (fold + 0 lights)))
+
+; random presses on a dark board, again in the rare case they undo
+; each other and leave it dark
+(def scramble
+  (fn ()
+    (let ((lights (fold (fn (l k) (press-on l (random (* N N)))) dark (range SCRAMBLE))))
+      (if (> (lit-count lights) 0) lights (scramble)))))
+
+(def new-game (fn () (set LIT (scramble)) (set MOVES 0) (set AT 12)))
+(def won? (fn () (= (lit-count LIT) 0)))
+(def press
+  (fn (i) (if (won?) #t (do (set LIT (press-on LIT i)) (set MOVES (+ MOVES 1))))))
+
+; where the grid sits on the screen
+(def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))
+(def gy (fn () (math-max 2 (floor (/ (- H GRID_H) 2)))))
+
+; the light under a click, -1 off every light (the gaps between count as off)
+(def hit
+  (fn ()
+    (let ((x (- MX (gx))) (y (- MY (gy))))
+      (let ((c (floor (/ x (+ CELL_W 1)))) (r (floor (/ y (+ CELL_H 1)))))
+        (if (and (>= x 0) (>= y 0) (< c N) (< r N)
+              (< (- x (* c (+ CELL_W 1))) CELL_W) (< (- y (* r (+ CELL_H 1))) CELL_H))
+          (+ (* r N) c)
+          -1)))))
+
+(new-game)

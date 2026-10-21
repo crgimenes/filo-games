@@ -1,0 +1,23 @@
+; The board: a lit light in amber, a dark one in shade, the one under the
+; cursor brighter; under the grid how it is going, and the keys.
+(let ((x0 (gx)) (y0 (gy)))
+  (fg 214)
+  (attr A_BOLD)
+  (print-at (- y0 2) (floor (/ (- W 10) 2)) "LIGHTS OUT")
+  (attr 0)
+  (map
+    (fn (i)
+      (let ((r (floor (/ i N))) (c (- i (* N (floor (/ i N))))) (on (= (nth LIT i) 1)) (here (= i AT)))
+        (fg (cond ((and on here) 230) (on 214) (here 244) (else 237)))
+        (map (fn (k) (print-at (+ y0 (* r (+ CELL_H 1)) k) (+ x0 (* c (+ CELL_W 1))) (if on "█████" "░░░░░")))
+          (range CELL_H))))
+    (range (* N N)))
+  (fg 250)
+  (let ((say (if (won?)
+               (str-fmt "All dark in %d moves!  r plays again" MOVES)
+               (str-fmt "moves %d · lights on %d" MOVES (lit-count LIT)))))
+    (print-at (+ y0 GRID_H 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
+  (fg 244)
+  (let ((keys "arrows move · space presses · r new · esc leaves"))
+    (print-at (+ y0 GRID_H 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+  (fg C_DEFAULT))
