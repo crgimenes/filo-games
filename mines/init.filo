@@ -1,0 +1,113 @@
+; Minesweeper, in Filo. Nine by nine, ten mines. The mines are laid after
+; the first cell is opened, away from it and its neighbours, so the first
+; step is always safe. A number tells the mines around a cell; a cell with
+; none opens its neighbours, and so on. Every safe cell open wins; a mine
+; opened loses, and shows where the others were.
+
+(def N 9)
+(def MINES 10)
+(def CELL_W 3)
+
+(def MINE (list))
+(def OPEN (list))
+(def FLAG (list))
+(def LAID #f)
+(def OVER "") ; "", "won" or "lost"
+(def AT 40)
+(def FLAGGING #f) ; a click flags instead of opening: for a finger
+; A key only says which cell to open: a key's budget is for moving state,
+; and opening a field (laying the mines, counting, spreading over the
+; empty cells) is a paint's work, done first thing in draw.
+(def WANT -1)
+(def COUNTS (list))
+
+(def none (map (fn (i) 0) (range (* N N))))
+(def on-board (fn (v) (- v (* N (floor (/ v N))))))
+(def set-at (fn (l i v) (map (fn (j) (if (= j i) v (nth l j))) (range (* N N)))))
+(def has? (fn (l x) (> (length (filter (fn (y) (= y x)) l)) 0)))
+
+; the cells around i, on the board
+(def around
+  (fn (i)
+    (let ((r (floor (/ i N))) (c (on-board i)))
+      (fold
+        (fn (acc d)
+          (let ((rr (+ r (- (floor (/ d 3)) 1))) (cc (+ c (- (on-board-3 d) 1))))
+            (if (and (>= rr 0) (< rr N) (>= cc 0) (< cc N) (not (= d 4))) (list-append acc (+ (* rr N) cc)) acc)))
+        (list)
+        (range 9)))))
+(def on-board-3 (fn (d) (- d (* 3 (floor (/ d 3))))))
+
+; every cell's neighbours, worked out once
+(def NEAR (map around (range (* N N))))
+(def count (fn (i) (nth COUNTS i)))
+
+; MINES mines on cells other than i and its neighbours
+(def lay
+  (fn (i)
+    (let ((keep (list-append (nth NEAR i) i)))
+      (set MINE (place none (filter (fn (j) (not (has? keep j))) (range (* N N))) MINES))
+      (set COUNTS (map (fn (j) (fold (fn (n k) (+ n (nth MINE k))) 0 (nth NEAR j))) (range (* N N))))
+      (set LAID #t))))
+(def place
+  (fn (mines free left)
+    (if (or (= left 0) (is-empty free))
+      mines
+      (let ((k (random (length free))))
+        (place (set-at mines (nth free k) 1) (filter (fn (j) (not (= j (nth free k)))) free) (- left 1))))))
+
+; the open cells grown by one step: a closed cell next to an open one with
+; no mine around opens (a flag stays shut); again until nothing changes.
+; One list a step, not one a cell: a run's memory is small.
+(def spread
+  (fn (open)
+    (let ((next
+            (map
+              (fn (j)
+                (if (or (= (nth open j) 1)
+                      (and (= (nth FLAG j) 0) (= (nth MINE j) 0)
+                        (> (fold (fn (n k) (if (and (= (nth open k) 1) (= (nth COUNTS k) 0)) (+ n 1) n)) 0 (nth NEAR j)) 0)))
+                  1
+                  0))
+              (range (* N N)))))
+      (if (= (fold + 0 next) (fold + 0 open)) next (spread next)))))
+
+(def safe-left (fn () (- (* N N) MINES (fold + 0 OPEN))))
+
+(def reveal
+  (fn (i)
+    (cond
+      ((not (= OVER "")) #t)
+      ((= (nth FLAG i) 1) #t)
+      (else
+        (do
+          (if LAID #t (lay i))
+          (if (= (nth MINE i) 1)
+            (set OVER "lost")
+            (do (set OPEN (spread (set-at OPEN i 1))) (if (= (safe-left) 0) (set OVER "won") #t))))))))
+
+(def flag
+  (fn (i)
+    (if (or (not (= OVER "")) (= (nth OPEN i) 1)) #t (set FLAG (set-at FLAG i (- 1 (nth FLAG i)))))))
+
+(def new-game
+  (fn ()
+    (set MINE none)
+    (set COUNTS none)
+    (set WANT -1)
+    (set OPEN none)
+    (set FLAG none)
+    (set LAID #f)
+    (set OVER "")
+    (set AT 40)))
+
+(def gx (fn () (math-max 0 (floor (/ (- W (* N CELL_W)) 2)))))
+(def gy (fn () (math-max 2 (floor (/ (- H N) 2)))))
+
+; the cell under a click, -1 off the board
+(def hit
+  (fn ()
+    (let ((x (- MX (gx))) (y (- MY (gy))))
+      (if (and (>= x 0) (>= y 0) (< x (* N CELL_W)) (< y N)) (+ (* y N) (floor (/ x CELL_W))) -1))))
+
+(new-game)

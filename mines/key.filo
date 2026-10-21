@@ -1,0 +1,15 @@
+; The arrows (or w a s d) move the cursor; space or Enter opens its cell, f
+; flags it; a click opens the cell under it (or flags it, after x).
+(let ((r (floor (/ AT N))) (c (on-board AT)))
+  (cond
+    ((= KEY KEY_ESC) (done))
+    ((or (= KEY KEY_UP) (= KEY 119)) (set AT (+ (* (on-board (- r 1)) N) c)))
+    ((or (= KEY KEY_DOWN) (= KEY 115)) (set AT (+ (* (on-board (+ r 1)) N) c)))
+    ((or (= KEY KEY_LEFT) (= KEY 97)) (set AT (+ (* r N) (on-board (- c 1)))))
+    ((or (= KEY KEY_RIGHT) (= KEY 100)) (set AT (+ (* r N) (on-board (+ c 1)))))
+    ((or (= KEY 32) (= KEY 13)) (set WANT AT))
+    ((or (= KEY 102) (= KEY 70)) (flag AT))
+    ((or (= KEY 120) (= KEY 88)) (set FLAGGING (not FLAGGING)))
+    ((= KEY KEY_CLICK) (let ((i (hit))) (if (>= i 0) (do (set AT i) (if FLAGGING (flag i) (set WANT i))) #t)))
+    ((or (= KEY 114) (= KEY 82)) (new-game))
+    (else #f)))

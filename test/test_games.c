@@ -687,6 +687,151 @@ static void test_wumpus(const char *path) {
     }
 }
 
+/* Minesweeper read off the screen: 9 by 9 cells three columns wide, from
+   (26,7) on 80 by 24; the middle column of a cell says what it is: a
+   shade dot closed, F a flag, a digit or a space open, * a mine (shown
+   when it is lost). The status line is two rows under the field. */
+enum { MS_N = 9, MS_V = MS_N * MS_N, MS_X = 26, MS_Y = 7 };
+
+static uint32_t ms_cell(int i) {
+    return A.target.cells[MS_Y + (i / MS_N)][MS_X + ((i % MS_N) * 3) + 1].cp;
+}
+
+static void ms_click(int i) {
+    char sgr[32];
+    (void)snprintf(sgr, sizeof(sgr), "\x1b[<0;%d;%dM", MS_X + ((i % MS_N) * 3) + 2,
+                   MS_Y + (i / MS_N) + 1);
+    app_input(&A, (const uint8_t *)sgr, strlen(sgr));
+    drain();
+}
+
+static bool ms_status(const char *text) {
+    char line[TERM_COLS_MAX + 1];
+    w_row(MS_Y + MS_N + 1, line, sizeof(line));
+    return strstr(line, text) != NULL;
+}
+
+static bool ms_start(const char *path, uint64_t seed) {
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        fail("mines", "cannot read the bundle");
+        return false;
+    }
+    size_t len = fread(fbb, 1, sizeof(fbb), f);
+    (void)fclose(f);
+    app_spec spec = {"mines", "test", false, 0, 0, 0, NULL};
+    char why[256];
+    A.seed = seed;
+    if (!app_start(&A, &spec, fbb, len, 80, 24, why, sizeof(why))) {
+        fail("mines", why);
+        return false;
+    }
+    drain();
+    return true;
+}
+
+static int ms_neighbours(const int mine[MS_V], int i) {
+    int n = 0;
+    for (int dr = -1; dr <= 1; dr++) {
+        for (int dc = -1; dc <= 1; dc++) {
+            int r = (i / MS_N) + dr;
+            int c = (i % MS_N) + dc;
+            if ((dr != 0 || dc != 0) && r >= 0 && r < MS_N && c >= 0 && c < MS_N) {
+                n += mine[(r * MS_N) + c];
+            }
+        }
+    }
+    return n;
+}
+
+/* Every open cell against the mines the loss shows: its number is its
+   neighbours' mines, and an empty one has every neighbour open. */
+static const char *ms_check_field(const int mine[MS_V]) {
+    for (int i = 0; i < MS_V; i++) {
+        uint32_t cp = ms_cell(i);
+        if (cp == 0xb7 || cp == 'F' || cp == '*') {
+            continue;
+        }
+        int want = ms_neighbours(mine, i);
+        int got = cp == ' ' ? 0 : (int)(cp - '0');
+        if (got != want) {
+            return "an open cell's number is not the mines around it";
+        }
+    }
+    return NULL;
+}
+
+static void test_mines(const char *path) {
+    if (!ms_start(path, 21)) {
+        return;
+    }
+    ms_click(40); /* the first step is always safe, and opens its ground */
+    if (ms_status("Boom") || ms_cell(40) != ' ') {
+        fail("mines", "the first cell opened was a mine, or had one beside it");
+        return;
+    }
+    for (int i = 0; i < MS_V && !ms_status("Boom") && !ms_status("Cleared"); i++) {
+        if (ms_cell(i) == 0xb7) {
+            ms_click(i);
+        }
+    }
+    if (!ms_status("Boom")) {
+        fail("mines", "opening every cell in turn did not hit a mine");
+        return;
+    }
+    int mine[MS_V];
+    int mines = 0;
+    for (int i = 0; i < MS_V; i++) {
+        mine[i] = ms_cell(i) == '*' ? 1 : 0;
+        mines += mine[i];
+    }
+    const char *bad = mines == 10 ? ms_check_field(mine) : "a lost field does not show ten mines";
+    if (bad != NULL) {
+        fail("mines", bad);
+        return;
+    }
+    /* the same seed, the same first step: the same field, now cleared */
+    if (!ms_start(path, 21)) {
+        return;
+    }
+    key("x"); /* 31, beside the first step, flagged first: the opening goes round it */
+    ms_click(31);
+    key("x");
+    ms_click(40);
+    if (ms_cell(31) != 'F' || ms_cell(40) != ' ') {
+        fail("mines", "the opening went over a flag");
+        return;
+    }
+    key("x");
+    ms_click(31); /* and unflagged: still shut, the opening did not take it */
+    key("x");
+    if (ms_cell(31) != 0xb7) {
+        fail("mines", "the opening went under a flag");
+        return;
+    }
+    int first = 0; /* a mine, flagged by a click after x; a click on it then opens nothing */
+    while (mine[first] == 0) {
+        first++;
+    }
+    key("x");
+    ms_click(first);
+    key("x");
+    drain();
+    ms_click(first);
+    if (ms_cell(first) != 'F' || !ms_status("flags 1") || ms_status("Boom")) {
+        fail("mines", "a flag is not kept, or a click opened it");
+        return;
+    }
+    for (int i = 0; i < MS_V; i++) {
+        if (mine[i] == 0 && ms_cell(i) == 0xb7) {
+            ms_click(i);
+        }
+    }
+    if (!ms_status("Cleared")) {
+        fail("mines", "every safe cell open is not a win");
+    }
+}
+
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         play(argv[i]);
@@ -701,6 +846,9 @@ int main(int argc, char **argv) {
         }
         if (strstr(argv[i], "wumpus") != NULL) {
             test_wumpus(argv[i]);
+        }
+        if (strstr(argv[i], "mines") != NULL) {
+            test_mines(argv[i]);
         }
     }
     if (failures > 0) {

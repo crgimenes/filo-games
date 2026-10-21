@@ -1,0 +1,36 @@
+; The field: a closed cell shaded, a flag in coral, an open one its number
+; in the number's colour (nothing for none); when it is lost, every mine.
+; The cursor's cell in reverse. Under the field how it goes, and the keys.
+(if (>= WANT 0) (do (reveal WANT) (set WANT -1)) #t)
+(let ((x0 (gx)) (y0 (gy)) (inks (list 252 39 34 196 63 124 37 252 244)))
+  (fg 214)
+  (attr A_BOLD)
+  (print-at (- y0 2) (floor (/ (- W 11) 2)) "MINESWEEPER")
+  (attr 0)
+  (map
+    (fn (i)
+      (let ((row (+ y0 (floor (/ i N)))) (col (+ x0 (* CELL_W (on-board i)))))
+        (cond
+          ((and (= OVER "lost") (= (nth MINE i) 1)) (do (fg 196) (bg 52) (print-at row col " * ")))
+          ((= (nth FLAG i) 1) (do (fg 203) (bg 236) (attr A_BOLD) (print-at row col " F ")))
+          ((= (nth OPEN i) 0) (do (fg 244) (bg 236) (print-at row col " · ")))
+          (else
+            (let ((n (count i)))
+              (fg (nth inks n))
+              (attr A_BOLD)
+              (print-at row col (if (= n 0) "   " (str-concat " " (string n) " "))))))
+        (attr 0)
+        (bg C_DEFAULT)
+        (if (and (= i AT) (= OVER ""))
+          (do (attr A_REV) (print-at row col (if (= (nth FLAG i) 1) " F " (if (= (nth OPEN i) 0) " · " (let ((n (count i))) (if (= n 0) "   " (str-concat " " (string n) " ")))))) (attr 0))
+          #t)))
+    (range (* N N)))
+  (fg 250)
+  (let ((say (cond ((= OVER "won") "Cleared! r plays again")
+                   ((= OVER "lost") "Boom. r plays again")
+                   (else (str-fmt "mines %d · flags %d%s" MINES (fold + 0 FLAG) (if FLAGGING " · a click flags" ""))))))
+    (print-at (+ y0 N 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
+  (fg 244)
+  (let ((keys "arrows move · space opens · f flags · x click flags · r new · esc"))
+    (print-at (+ y0 N 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+  (fg C_DEFAULT))
