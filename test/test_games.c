@@ -81,8 +81,8 @@ static void play(const char *path) {
 }
 
 /* Lights Out read off the screen: 5 by 5 lights, five columns by two rows
-   each, one apart, the grid centred (25,5 on 80 by 24). */
-enum { LO_N = 5, LO_V = LO_N * LO_N, LO_X = 25, LO_Y = 5 };
+   each, one apart, the grid centred (25,3 on 80 by 24, room kept for the keys). */
+enum { LO_N = 5, LO_V = LO_N * LO_N, LO_X = 25, LO_Y = 3 };
 
 static int lo_on(int i) {
     const cv_cell *c = &A.target.cells[LO_Y + ((i / LO_N) * 3)][LO_X + ((i % LO_N) * 6)];
@@ -832,6 +832,315 @@ static void test_mines(const char *path) {
     }
 }
 
+/* Sokoban read off the screen: two columns a cell, the level's left wall
+   the leftmost block, its top row two below the title; walls, goals (two
+   dots), boxes ([ ], green on a goal) and the player (@@). Each level is
+   solved by a breadth-first search over the player and the boxes, and the
+   solution played: every level the game ships has one. */
+enum { SK_MAX = 16, SK_BOXES = 7, SK_SLOTS = 1048576 };
+
+typedef struct {
+    int h;
+    bool wall[SK_MAX * SK_MAX];
+    bool goal[SK_MAX * SK_MAX];
+    int boxes[SK_BOXES];
+    int nboxes;
+    int player;
+} sk_level;
+
+static uint64_t sk_keys[SK_SLOTS];
+static uint32_t sk_parent[SK_SLOTS];
+static char sk_move[SK_SLOTS];
+static uint64_t sk_queue[SK_SLOTS];
+
+/* where the level starts: the title's row, and the leftmost wall block */
+static bool sk_origin(int *title, int *x0) {
+    *title = -1;
+    *x0 = 1000;
+    for (uint16_t y = 0; y < A.target.rows; y++) {
+        if (lo_row_has(y, "SOKOBAN")) {
+            *title = y;
+        }
+        for (uint16_t x = 0; x < A.target.cols; x++) {
+            if (A.target.cells[y][x].cp == 0x2588 && x < *x0) {
+                *x0 = x;
+            }
+        }
+    }
+    return *title >= 0;
+}
+
+static void sk_cell(sk_level *lv, int i, const cv_cell *cell) {
+    if (cell->cp == 0x2588) {
+        lv->wall[i] = true;
+    }
+    if (cell->cp == 0xb7 || (cell->cp == '[' && cell->fg == 46)) {
+        lv->goal[i] = true;
+    }
+    if (cell->cp == '[' && lv->nboxes < SK_BOXES) {
+        lv->boxes[lv->nboxes++] = i;
+    }
+    if (cell->cp == '@') {
+        lv->player = i;
+    }
+}
+
+static bool sk_read(sk_level *lv) {
+    memset(lv, 0, sizeof(*lv));
+    int title = 0;
+    int x0 = 0;
+    if (!sk_origin(&title, &x0)) {
+        return false;
+    }
+    int y0 = title + 2;
+    for (int r = 0; r < SK_MAX && !lo_row_has(y0 + r, "level "); r++) {
+        for (int c = 0; c < SK_MAX && x0 + (2 * c) < A.target.cols; c++) {
+            sk_cell(lv, (r * SK_MAX) + c, &A.target.cells[y0 + r][x0 + (2 * c)]);
+        }
+        lv->h = r + 1;
+    }
+    return lv->nboxes > 0;
+}
+
+/* a state as one number: the player, then the boxes in order, 8 bits each */
+static uint64_t sk_key(int player, const int *boxes, int n) {
+    int b[SK_BOXES];
+    memcpy(b, boxes, sizeof(int) * (size_t)n);
+    for (int i = 1; i < n; i++) {
+        for (int j = i; j > 0 && b[j - 1] > b[j]; j--) {
+            int t = b[j];
+            b[j] = b[j - 1];
+            b[j - 1] = t;
+        }
+    }
+    uint64_t k = (uint64_t)player;
+    for (int i = 0; i < n; i++) {
+        k = (k << 8U) | (uint64_t)b[i];
+    }
+    return k + 1; /* 0 is an empty slot */
+}
+
+static uint32_t sk_slot(uint64_t state) {
+    uint32_t h = (uint32_t)((state * 0x9E3779B97F4A7C15ULL) >> 44U);
+    while (sk_keys[h] != 0 && sk_keys[h] != state) {
+        h = (h + 1U) % (uint32_t)SK_SLOTS;
+    }
+    return h;
+}
+
+static void sk_unpack(uint64_t state, int n, int *player, int *boxes) {
+    state -= 1;
+    for (int i = n - 1; i >= 0; i--) {
+        boxes[i] = (int)(state & 0xFFU);
+        state >>= 8U;
+    }
+    *player = (int)state;
+}
+
+static bool sk_done(const sk_level *lv, const int *boxes) {
+    for (int i = 0; i < lv->nboxes; i++) {
+        if (!lv->goal[boxes[i]]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* One step d (0 up, 1 down, 2 left, 3 right) from a state: the boxes after
+   it in nb and the player's cell, or -1 when a wall or a second box stops
+   it. */
+static int sk_step(const sk_level *lv, int player, const int *boxes, int d, int *nb) {
+    static const int delta[4] = {-SK_MAX, SK_MAX, -1, 1};
+    int next = player + delta[d];
+    if (lv->wall[next]) {
+        return -1;
+    }
+    memcpy(nb, boxes, sizeof(int) * (size_t)lv->nboxes);
+    for (int i = 0; i < lv->nboxes; i++) {
+        if (nb[i] != next) {
+            continue;
+        }
+        int beyond = next + delta[d];
+        if (lv->wall[beyond]) {
+            return -1;
+        }
+        for (int j = 0; j < lv->nboxes; j++) {
+            if (nb[j] == beyond) {
+                return -1;
+            }
+        }
+        nb[i] = beyond;
+    }
+    return next;
+}
+
+/* the moves that led to a state, from the start, as u d l r */
+static void sk_path(uint64_t state, char *out, size_t cap) {
+    char rev[512];
+    size_t n = 0;
+    uint32_t at = sk_slot(state);
+    while (sk_parent[at] != UINT32_MAX && n + 1 < sizeof(rev)) {
+        rev[n++] = sk_move[at];
+        at = sk_parent[at];
+    }
+    for (size_t i = 0; i < n && i + 1 < cap; i++) {
+        out[i] = rev[n - 1 - i];
+        out[i + 1] = '\0';
+    }
+}
+
+/* the moves (u d l r) from the start to every box on a goal, or "" */
+static void sk_solve(const sk_level *lv, char *out, size_t cap) {
+    static const char names[4] = {'u', 'd', 'l', 'r'};
+    memset(sk_keys, 0, sizeof(sk_keys));
+    out[0] = '\0';
+    uint64_t start = sk_key(lv->player, lv->boxes, lv->nboxes);
+    uint32_t head = 0;
+    uint32_t tail = 0;
+    uint32_t s0 = sk_slot(start);
+    sk_keys[s0] = start;
+    sk_parent[s0] = UINT32_MAX;
+    sk_queue[tail++] = start;
+    while (head < tail) {
+        uint64_t state = sk_queue[head++];
+        int player = 0;
+        int boxes[SK_BOXES];
+        sk_unpack(state, lv->nboxes, &player, boxes);
+        if (sk_done(lv, boxes)) {
+            sk_path(state, out, cap);
+            return;
+        }
+        for (int d = 0; d < 4 && tail < SK_SLOTS; d++) {
+            int nb[SK_BOXES];
+            int next = sk_step(lv, player, boxes, d, nb);
+            uint64_t k = next < 0 ? 0 : sk_key(next, nb, lv->nboxes);
+            uint32_t slot = next < 0 ? 0 : sk_slot(k);
+            if (next < 0 || sk_keys[slot] == k) {
+                continue;
+            }
+            sk_keys[slot] = k;
+            sk_parent[slot] = sk_slot(state);
+            sk_move[slot] = names[d];
+            sk_queue[tail++] = k;
+        }
+    }
+}
+
+static void sk_play(const char *moves) {
+    for (const char *m = moves; *m != '\0'; m++) {
+        switch (*m) {
+        case 'u':
+            key("\x1b[A");
+            break;
+        case 'd':
+            key("\x1b[B");
+            break;
+        case 'l':
+            key("\x1b[D");
+            break;
+        default:
+            key("\x1b[C");
+            break;
+        }
+    }
+    drain();
+}
+
+static bool sk_status(const char *text) {
+    for (uint16_t y = 0; y < A.target.rows; y++) {
+        if (lo_row_has(y, text)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void test_sokoban(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        fail("sokoban", "cannot read the bundle");
+        return;
+    }
+    size_t len = fread(fbb, 1, sizeof(fbb), f);
+    (void)fclose(f);
+    app_spec spec = {"sokoban", "test", false, 0, 0, 0, NULL};
+    char why[256];
+    if (!app_start(&A, &spec, fbb, len, 80, 24, why, sizeof(why))) {
+        fail("sokoban", why);
+        return;
+    }
+    drain();
+    /* level 1: a wall stops the player, a step counts, u takes it back */
+    key("\x1b[D");
+    drain();
+    if (!sk_status("moves 0")) {
+        fail("sokoban", "the player walked into a wall");
+    }
+    key("\x1b[C");
+    drain();
+    bool counted = sk_status("moves 1 ");
+    key("u");
+    drain();
+    if (!counted || !sk_status("moves 0")) {
+        fail("sokoban", "a step is not counted, or u does not take it back");
+    }
+    for (int level = 1; level <= 6; level++) {
+        sk_level lv;
+        char moves[512];
+        if (!sk_read(&lv)) {
+            fail("sokoban", "a level cannot be read off the screen");
+            return;
+        }
+        sk_solve(&lv, moves, sizeof(moves));
+        if (moves[0] == '\0') {
+            fail("sokoban", "a level has no solution");
+            return;
+        }
+        sk_play(moves);
+        if (!sk_status("Solved in")) {
+            fail("sokoban", "the solution's moves did not solve the level");
+            return;
+        }
+        key("n");
+        drain();
+    }
+    if (!sk_status("level 1/6")) {
+        fail("sokoban", "n after the last level is not the first");
+    }
+}
+
+/* A phone's screen, 35 by 20: the keys under a game break onto rows
+   rather than run off the edge (their last word, esc, is on screen), and
+   the wumpus's story breaks at the width (the tunnels' numbers show). */
+static void test_narrow(const char *path, const char *name) {
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        fail(name, "cannot read the bundle");
+        return;
+    }
+    size_t len = fread(fbb, 1, sizeof(fbb), f);
+    (void)fclose(f);
+    app_spec spec = {name, "test", false, 0, 0, 0, NULL};
+    char why[256];
+    if (!app_start(&A, &spec, fbb, len, 35, 20, why, sizeof(why))) {
+        fail(name, why);
+        return;
+    }
+    drain();
+    if (strcmp(name, "wumpus") == 0) {
+        for (uint16_t y = 0; y + 1 < A.target.rows; y++) {
+            if (lo_row_has(y, "Tunnels lead to") &&
+                !(A.target.cells[y + 1][0].cp >= '0' && A.target.cells[y + 1][0].cp <= '9')) {
+                fail(name, "the tunnels' numbers run off a narrow screen");
+            }
+        }
+        return;
+    }
+    if (!sk_status("esc")) {
+        fail(name, "the keys run off a narrow screen");
+    }
+}
+
 int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         play(argv[i]);
@@ -849,6 +1158,17 @@ int main(int argc, char **argv) {
         }
         if (strstr(argv[i], "mines") != NULL) {
             test_mines(argv[i]);
+        }
+        if (strstr(argv[i], "sokoban") != NULL) {
+            test_sokoban(argv[i]);
+        }
+        static const char *const narrow[] = {
+            "lights", "twenty48", "mastermind", "mines", "sokoban", "wumpus",
+        };
+        for (size_t k = 0; k < sizeof(narrow) / sizeof(narrow[0]); k++) {
+            if (strstr(argv[i], narrow[k]) != NULL) {
+                test_narrow(argv[i], narrow[k]);
+            }
         }
     }
     if (failures > 0) {

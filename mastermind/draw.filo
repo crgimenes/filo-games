@@ -44,5 +44,5 @@
     (print-at (+ y0 TRIES 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
   (fg 244)
   (let ((keys "1-6 colours · backspace erases · enter tries · esc leaves"))
-    (print-at (+ y0 TRIES 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+    (keys-at (+ y0 TRIES 2) keys))
   (fg C_DEFAULT))

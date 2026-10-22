@@ -1,0 +1,27 @@
+; Two columns a cell: walls solid, a goal two dots, a box in brackets
+; (green once on a goal), the player at signs. Under the level how it
+; goes, and the keys.
+(let ((x0 (gx)) (y0 (gy)))
+  (fg 214)
+  (attr A_BOLD)
+  (print-at (- y0 2) (floor (/ (- W 7) 2)) "SOKOBAN")
+  (attr 0)
+  (map
+    (fn (p)
+      (let ((row (+ y0 (floor (/ p LW)))) (col (+ x0 (* 2 (- p (* LW (floor (/ p LW))))))))
+        (cond
+          ((= p PLAYER) (do (fg 231) (attr A_BOLD) (print-at row col "@@") (attr 0)))
+          ((has? BOXES p) (do (fg (if (has? GOALS p) 46 180)) (attr A_BOLD) (print-at row col "[]") (attr 0)))
+          ((has? GOALS p) (do (fg 214) (print-at row col "··")))
+          ((wall? p) (do (fg 240) (print-at row col "██")))
+          (else #t))))
+    (range (* LW LH)))
+  (fg 250)
+  (let ((say (if (solved?)
+               (str-fmt "Solved in %d moves! n next level" MOVES)
+               (str-fmt "level %d/%d · moves %d · pushes %d" (+ LEVEL 1) (length LEVELS) MOVES PUSHES))))
+    (print-at (+ y0 LH 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
+  (fg 244)
+  (let ((keys "arrows push · u undo · r restart · n p level · esc"))
+    (keys-at (+ y0 LH 2) keys))
+  (fg C_DEFAULT))

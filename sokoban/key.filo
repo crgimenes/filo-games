@@ -1,0 +1,13 @@
+; The arrows (or w a s d) walk and push; u takes a step back, r starts the
+; level over, n and p go to the next and the previous one.
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((or (= KEY KEY_UP) (= KEY 119)) (step (- 0 LW)))
+  ((or (= KEY KEY_DOWN) (= KEY 115)) (step LW))
+  ((or (= KEY KEY_LEFT) (= KEY 97)) (step -1))
+  ((or (= KEY KEY_RIGHT) (= KEY 100)) (step 1))
+  ((or (= KEY 117) (= KEY 85)) (undo))
+  ((or (= KEY 114) (= KEY 82)) (load LEVEL))
+  ((or (= KEY 110) (= KEY 78)) (load (- (+ LEVEL 1) (* (length LEVELS) (floor (/ (+ LEVEL 1) (length LEVELS)))))))
+  ((or (= KEY 112) (= KEY 80)) (load (- (+ LEVEL (length LEVELS) -1) (* (length LEVELS) (floor (/ (+ LEVEL (length LEVELS) -1) (length LEVELS)))))))
+  (else #f))

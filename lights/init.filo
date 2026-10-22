@@ -52,7 +52,7 @@
 
 ; where the grid sits on the screen
 (def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))
-(def gy (fn () (math-max 2 (floor (/ (- H GRID_H) 2)))))
+(def gy (fn () (math-max 2 (floor (/ (- H GRID_H 4) 2)))))
 
 ; the light under a click, -1 off every light (the gaps between count as off)
 (def hit
@@ -63,5 +63,20 @@
               (< (- x (* c (+ CELL_W 1))) CELL_W) (< (- y (* r (+ CELL_H 1))) CELL_H))
           (+ (* r N) c)
           -1)))))
+
+
+; The keys under the game, centred; on a narrow screen (a phone) broken
+; between items onto as many rows as they need.
+(def keys-at
+  (fn (row text)
+    (let ((lines (fold (fn (acc part)
+                         (let ((last (if (is-empty acc) "" (nth acc (- (length acc) 1)))))
+                           (if (and (not (is-empty acc)) (<= (text-width (str-concat last " · " part)) W))
+                             (list-concat (map (fn (i) (nth acc i)) (range (- (length acc) 1))) (list (str-concat last " · " part)))
+                             (list-append acc part))))
+                       (list)
+                       (str-split " · " text))))
+      (map (fn (i) (let ((l (nth lines i))) (print-at (+ row i) (math-max 0 (floor (/ (- W (text-width l)) 2))) l)))
+           (range (length lines))))))
 
 (new-game)

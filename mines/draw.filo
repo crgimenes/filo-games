@@ -32,5 +32,5 @@
     (print-at (+ y0 N 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
   (fg 244)
   (let ((keys "arrows move · space opens · f flags · x click flags · r new · esc"))
-    (print-at (+ y0 N 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+    (keys-at (+ y0 N 2) keys))
   (fg C_DEFAULT))

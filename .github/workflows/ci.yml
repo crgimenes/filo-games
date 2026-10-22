@@ -61,11 +61,11 @@ jobs:
       # Go's filo at its own head, beside C's: the two must write the same bytes
       - run: cd filo && go build -o "$RUNNER_TEMP/filo" ./cmd/filo
       - run: |
-          make -C filo-games donut.fbb snake.fbb down.fbb fire.fbb lights.fbb twenty48.fbb mastermind.fbb wumpus.fbb mines.fbb
+          make -C filo-games donut.fbb snake.fbb down.fbb fire.fbb lights.fbb twenty48.fbb mastermind.fbb wumpus.fbb mines.fbb sokoban.fbb
           mkdir c && mv filo-games/*.fbb c/
           rm -f filo-games/build/*.fbc
-          make -C filo-games donut.fbb snake.fbb down.fbb fire.fbb lights.fbb twenty48.fbb mastermind.fbb wumpus.fbb mines.fbb FILO_CLI="$RUNNER_TEMP/filo"
-          for g in donut snake down fire lights twenty48 mastermind wumpus mines; do cmp filo-games/$g.fbb c/$g.fbb; done
+          make -C filo-games donut.fbb snake.fbb down.fbb fire.fbb lights.fbb twenty48.fbb mastermind.fbb wumpus.fbb mines.fbb sokoban.fbb FILO_CLI="$RUNNER_TEMP/filo"
+          for g in donut snake down fire lights twenty48 mastermind wumpus mines sokoban; do cmp filo-games/$g.fbb c/$g.fbb; done
 
   # The release's Linux binaries: musl, static, nothing to install.
   static:

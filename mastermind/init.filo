@@ -40,4 +40,19 @@
         (set GUESSES (list-append GUESSES (tuple TYPED e n)))
         (set TYPED (list))))))
 
+
+; The keys under the game, centred; on a narrow screen (a phone) broken
+; between items onto as many rows as they need.
+(def keys-at
+  (fn (row text)
+    (let ((lines (fold (fn (acc part)
+                         (let ((last (if (is-empty acc) "" (nth acc (- (length acc) 1)))))
+                           (if (and (not (is-empty acc)) (<= (text-width (str-concat last " · " part)) W))
+                             (list-concat (map (fn (i) (nth acc i)) (range (- (length acc) 1))) (list (str-concat last " · " part)))
+                             (list-append acc part))))
+                       (list)
+                       (str-split " · " text))))
+      (map (fn (i) (let ((l (nth lines i))) (print-at (+ row i) (math-max 0 (floor (/ (- W (text-width l)) 2))) l)))
+           (range (length lines))))))
+
 (new-game)

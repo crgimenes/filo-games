@@ -1,0 +1,101 @@
+; Sokoban (Hiroyuki Imabayashi, 1982), in Filo: push every box onto a
+; goal. A box moves only when pushed, one at a time, never pulled. The
+; levels are the board's own, each one shown solvable by the tests' solver;
+; they go from a single push to a few dozen moves.
+
+(def LEVELS
+  (list
+    (list "#######" "#@ $ .#" "#######")
+    (list "######" "#.  .#" "# $$ #" "#  @ #" "######")
+    (list "#######" "#.   .#" "# $$$ #" "#  .  #" "#  @  #" "#######")
+    (list "########" "#  .   #" "# $#$  #" "#  .@  #" "########")
+    (list "########" "#      #" "# #$#$ #" "# . @ .#" "#   $  #" "#  .   #" "########")
+    (list "  #####" "###   #" "#.@$  #" "### $.#" "#.##$ #" "# # . ##" "#$ *$$.#" "#   .  #" "########")))
+
+(def LEVEL 0)
+(def MAP (list))   ; the level's rows, padded to its width
+(def LW 0)
+(def LH 0)
+(def GOALS (list)) ; cells, row * LW + column
+(def BOXES (list))
+(def PLAYER 0)
+(def MOVES 0)
+(def PUSHES 0)
+(def HISTORY (list)) ; what an undo puts back, the newest first
+(def UNDO_MAX 200)
+
+(def has? (fn (l x) (> (length (filter (fn (y) (= y x)) l)) 0)))
+(def pad (fn (row width) (str-concat row (str-join "" (map (fn (i) " ") (range (- width (str-len row))))))))
+(def raw (fn (p) (let ((r (floor (/ p LW))) (c (- p (* LW (floor (/ p LW)))))) (str-sub (nth MAP r) c (+ c 1)))))
+(def wall? (fn (p) (= (raw p) "#")))
+(def where (fn (marks) (filter (fn (p) (str-find (raw p) marks)) (range (* LW LH)))))
+
+(def load
+  (fn (i)
+    (let ((rows (nth LEVELS i)))
+      (set LEVEL i)
+      (set LW (fold (fn (w r) (math-max w (str-len r))) 0 rows))
+      (set LH (length rows))
+      (set MAP (map (fn (r) (pad r LW)) rows))
+      (set GOALS (where ".*+"))
+      (set BOXES (where "$*"))
+      (set PLAYER (head (where "@+")))
+      (set MOVES 0)
+      (set PUSHES 0)
+      (set HISTORY (list)))))
+
+(def solved? (fn () (= (length (filter (fn (b) (has? GOALS b)) BOXES)) (length BOXES))))
+
+(def remember
+  (fn ()
+    (let ((h (list-concat (list (tuple PLAYER BOXES MOVES PUSHES)) HISTORY)))
+      (set HISTORY (if (> (length h) UNDO_MAX) (map (fn (i) (nth h i)) (range UNDO_MAX)) h)))))
+
+(def undo
+  (fn ()
+    (if (is-empty HISTORY)
+      #t
+      (letv (p b m s) (head HISTORY)
+        (set PLAYER p)
+        (set BOXES b)
+        (set MOVES m)
+        (set PUSHES s)
+        (set HISTORY (tail HISTORY))))))
+
+; a step: the cell ahead, and a box there goes one further when it can
+(def step
+  (fn (d)
+    (let ((ahead (+ PLAYER d)))
+      (cond
+        ((or (solved?) (wall? ahead)) #t)
+        ((has? BOXES ahead)
+          (let ((beyond (+ ahead d)))
+            (if (or (wall? beyond) (has? BOXES beyond))
+              #t
+              (do
+                (remember)
+                (set BOXES (map (fn (b) (if (= b ahead) beyond b)) BOXES))
+                (set PLAYER ahead)
+                (set MOVES (+ MOVES 1))
+                (set PUSHES (+ PUSHES 1))))))
+        (else (do (remember) (set PLAYER ahead) (set MOVES (+ MOVES 1))))))))
+
+(def gx (fn () (math-max 0 (floor (/ (- W (* LW 2)) 2)))))
+(def gy (fn () (math-max 2 (floor (/ (- H LH) 2)))))
+
+
+; The keys under the game, centred; on a narrow screen (a phone) broken
+; between items onto as many rows as they need.
+(def keys-at
+  (fn (row text)
+    (let ((lines (fold (fn (acc part)
+                         (let ((last (if (is-empty acc) "" (nth acc (- (length acc) 1)))))
+                           (if (and (not (is-empty acc)) (<= (text-width (str-concat last " · " part)) W))
+                             (list-concat (map (fn (i) (nth acc i)) (range (- (length acc) 1))) (list (str-concat last " · " part)))
+                             (list-append acc part))))
+                       (list)
+                       (str-split " · " text))))
+      (map (fn (i) (let ((l (nth lines i))) (print-at (+ row i) (math-max 0 (floor (/ (- W (text-width l)) 2))) l)))
+           (range (length lines))))))
+
+(load 0)

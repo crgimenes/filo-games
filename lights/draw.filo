@@ -19,5 +19,5 @@
     (print-at (+ y0 GRID_H 1) (math-max 0 (floor (/ (- W (text-width say)) 2))) say))
   (fg 244)
   (let ((keys "arrows move · space presses · r new · esc leaves"))
-    (print-at (+ y0 GRID_H 2) (math-max 0 (floor (/ (- W (text-width keys)) 2))) keys))
+    (keys-at (+ y0 GRID_H 2) keys))
   (fg C_DEFAULT))
