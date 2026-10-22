@@ -13,6 +13,10 @@
 (def TILES (list))
 (def SCORE 0)
 (def WON #f)
+; the score goes to the Hall of Fame once a game: when no move is left, or
+; when it is left (esc, r) with points on it
+(def REPORTED #f)
+(def report (fn () (if (or REPORTED (= SCORE 0)) #t (do (set REPORTED #t) (report-score SCORE)))))
 
 (def empty (map (fn (i) 0) (range (* N N))))
 (def at (fn (r c) (+ (* r N) c)))
@@ -89,7 +93,7 @@
           (set SCORE (+ SCORE gained))
           (if (> (length (filter (fn (v) (>= v 2048)) TILES)) 0) (set WON #t) #t))))))
 
-(def new-game (fn () (set TILES (spawn (spawn empty))) (set SCORE 0) (set WON #f)))
+(def new-game (fn () (report) (set TILES (spawn (spawn empty))) (set SCORE 0) (set WON #f) (set REPORTED #f)))
 
 (def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))
 (def gy (fn () (math-max 2 (floor (/ (- H GRID_H) 2)))))

@@ -133,7 +133,7 @@
           (ate (= seen FOOD))
           (free (or (= seen EMPTY) ate (and (= nx tx) (= ny ty)))))
       (if (not free)
-        (set over #t)
+        (do (set over #t) (if (> score 0) (report-score score) #t))
         (do
           (paint hx hy "▓▓" 2 (+ dir 1))
           (if (not ate)
@@ -148,4 +148,4 @@
             (do
               (set score (+ score 1))
               (if (> score best) (set best score))
-              (if (not (place-food)) (do (set over #t) (set won #t))))))))))
+              (if (not (place-food)) (do (set over #t) (set won #t) (report-score score))))))))))

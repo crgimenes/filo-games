@@ -77,7 +77,8 @@
                 (set BOXES (map (fn (b) (if (= b ahead) beyond b)) BOXES))
                 (set PLAYER ahead)
                 (set MOVES (+ MOVES 1))
-                (set PUSHES (+ PUSHES 1))))))
+                (set PUSHES (+ PUSHES 1))
+                (if (solved?) (report-score MOVES (string (+ LEVEL 1))) #t)))))
         (else (do (remember) (set PLAYER ahead) (set MOVES (+ MOVES 1))))))))
 
 (def gx (fn () (math-max 0 (floor (/ (- W (* LW 2)) 2)))))

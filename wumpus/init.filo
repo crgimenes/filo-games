@@ -20,6 +20,7 @@
 (def BATS (list))
 (def ARROWS 5)
 (def OVER #f)
+(def TURNS 0) ; moves and shots: fewer is the better hunt
 (def LOG (list))
 
 (def tunnels (fn (r) (nth CAVE r)))
@@ -48,7 +49,12 @@
       (say (str-fmt "You are in room %d. Tunnels lead to %d, %d, %d." ROOM (nth t 0) (nth t 1) (nth t 2))))))
 
 (def lose (fn (why) (say why) (say "Ha ha ha - you lose! Type new to play again.") (set OVER #t)))
-(def win (fn () (say "Aha! You got the wumpus!") (say "Hee hee hee - the wumpus'll get you next time! Type new.") (set OVER #t)))
+(def win
+  (fn ()
+    (say "Aha! You got the wumpus!")
+    (say "Hee hee hee - the wumpus'll get you next time! Type new.")
+    (set OVER #t)
+    (report-score TURNS)))
 
 ; the wumpus, awake, moves three times in four
 (def wake
@@ -68,7 +74,9 @@
 
 (def move
   (fn (r)
-    (if (next-to? ROOM r) (enter r) (do (say (str-fmt "No tunnel to room %d from here." r)) (look)))))
+    (if (next-to? ROOM r)
+      (do (set TURNS (+ TURNS 1)) (enter r))
+      (do (say (str-fmt "No tunnel to room %d from here." r)) (look)))))
 
 ; the arrow's flight through the rooms asked, from where it is
 (def fly
@@ -89,6 +97,7 @@
       (else
         (do
           (set ARROWS (- ARROWS 1))
+          (set TURNS (+ TURNS 1))
           (fly ROOM path)
           (if OVER
             #t
@@ -107,6 +116,7 @@
       (set BATS (list (nth places 4) (nth places 5)))
       (set ARROWS 5)
       (set OVER #f)
+      (set TURNS 0)
       (set LOG (list))
       (say "Hunt the Wumpus. m ROOM moves; s ROOM... shoots; new starts over.")
       (look))))

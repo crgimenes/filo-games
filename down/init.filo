@@ -157,6 +157,7 @@
         (if (< lives 1)
           (do
             (set over #t)
+            (if (> score 0) (report-score score) #t)
             (if (> score best) (set best score))))))))
 
 (def catch

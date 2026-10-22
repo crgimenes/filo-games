@@ -48,7 +48,13 @@
 (def new-game (fn () (set LIT (scramble)) (set MOVES 0) (set AT 12)))
 (def won? (fn () (= (lit-count LIT) 0)))
 (def press
-  (fn (i) (if (won?) #t (do (set LIT (press-on LIT i)) (set MOVES (+ MOVES 1))))))
+  (fn (i)
+    (if (won?)
+      #t
+      (do
+        (set LIT (press-on LIT i))
+        (set MOVES (+ MOVES 1))
+        (if (won?) (report-score MOVES) #t)))))
 
 ; where the grid sits on the screen
 (def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))

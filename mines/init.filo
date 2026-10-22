@@ -13,6 +13,7 @@
 (def FLAG (list))
 (def LAID #f)
 (def OVER "") ; "", "won" or "lost"
+(def OPENS 0) ; the cells opened by hand: fewer is the cleaner sweep
 (def AT 40)
 (def FLAGGING #f) ; a click flags instead of opening: for a finger
 ; A key only says which cell to open: a key's budget is for moving state,
@@ -79,12 +80,16 @@
     (cond
       ((not (= OVER "")) #t)
       ((= (nth FLAG i) 1) #t)
+      ((= (nth OPEN i) 1) #t)
       (else
         (do
           (if LAID #t (lay i))
           (if (= (nth MINE i) 1)
             (set OVER "lost")
-            (do (set OPEN (spread (set-at OPEN i 1))) (if (= (safe-left) 0) (set OVER "won") #t))))))))
+            (do
+              (set OPENS (+ OPENS 1))
+              (set OPEN (spread (set-at OPEN i 1)))
+              (if (= (safe-left) 0) (do (set OVER "won") (report-score OPENS)) #t))))))))
 
 (def flag
   (fn (i)
@@ -99,6 +104,7 @@
     (set FLAG none)
     (set LAID #f)
     (set OVER "")
+    (set OPENS 0)
     (set AT 40)))
 
 (def gx (fn () (math-max 0 (floor (/ (- W (* N CELL_W)) 2)))))

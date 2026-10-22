@@ -38,7 +38,8 @@
       #t
       (letv (e n) (score SECRET TYPED)
         (set GUESSES (list-append GUESSES (tuple TYPED e n)))
-        (set TYPED (list))))))
+        (set TYPED (list))
+        (if (solved?) (report-score (length GUESSES)) #t)))))
 
 
 ; The keys under the game, centred; on a narrow screen (a phone) broken

@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "paint.h"
 
 enum { FBB_CAP = 256 * 1024, TICKS = 400, TICK_MS = 20 };
 
@@ -25,6 +26,19 @@ static void drain(void) {
     uint8_t out[TERM_OUT_CAP];
     while (term_out_read(&A.t, out, sizeof(out)) > 0) {
     }
+}
+
+/* What the games hand the Hall of Fame (report-score): how many results,
+   the last one and its track. */
+static int sc_count;
+static int32_t sc_value;
+static char sc_track[PAINT_TRACK_MAX];
+
+static void took_score(app *a, const char *track, int32_t value) {
+    (void)a;
+    sc_count++;
+    sc_value = value;
+    (void)snprintf(sc_track, sizeof(sc_track), "%s", track);
 }
 
 static void key(const char *bytes) {
@@ -220,12 +234,18 @@ static void test_lights(const char *path) {
         fail("lights", "the puzzle has no solution");
         return;
     }
+    sc_count = 0;
+    int clicks = 0;
     for (int i = 0; i < LO_N * LO_N; i++) {
         if (solution[i] != 0) {
             lo_click(i);
+            clicks++;
         }
     }
     drain();
+    if (sc_count != 1 || sc_value != 1 + clicks || sc_track[0] != '\0') {
+        fail("lights", "a dark board does not report its moves, once");
+    }
     for (int i = 0; i < LO_N * LO_N; i++) {
         if (lo_on(i) != 0) {
             fail("lights", "the solution's clicks left a light on");
@@ -358,6 +378,7 @@ static void test_twenty48(const char *path) {
     app_spec spec = {"twenty48", "test", false, 0, 0, 0, NULL};
     char why[256];
     A.seed = 5;
+    sc_count = 0;
     if (!app_start(&A, &spec, fbb, len, 80, 24, why, sizeof(why))) {
         fail("twenty48", why);
         return;
@@ -395,6 +416,15 @@ static void test_twenty48(const char *path) {
             return;
         }
         memcpy(before, after, sizeof(before));
+    }
+    /* the score goes to the Hall of Fame once a game: when no move is left,
+       or as the game is left with points on it */
+    int score = t_score();
+    key("\x1b");
+    app_tick(&A, 100);
+    drain();
+    if (score > 0 && (sc_count != 1 || sc_value != score)) {
+        fail("twenty48", "a game does not report its score once");
     }
 }
 
@@ -459,6 +489,7 @@ static void test_mastermind(const char *path) {
     app_spec spec = {"mastermind", "test", false, 0, 0, 0, NULL};
     char why[256];
     A.seed = 3;
+    sc_count = 0;
     if (!app_start(&A, &spec, fbb, len, 80, 24, why, sizeof(why))) {
         fail("mastermind", why);
         return;
@@ -487,6 +518,12 @@ static void test_mastermind(const char *path) {
         if (e == M_PEGS) {
             break;
         }
+    }
+    int e_last = 0;
+    int n_last = 0;
+    m_answer(M_Y + tries - 1, &e_last, &n_last);
+    if (e_last == M_PEGS ? (sc_count != 1 || sc_value != tries) : sc_count != 0) {
+        fail("mastermind", "a broken code does not report its tries, or a lost one does");
     }
     int code[M_PEGS];
     (void)m_code(code, tries);
@@ -719,7 +756,7 @@ static bool ms_start(const char *path, uint64_t seed) {
     }
     size_t len = fread(fbb, 1, sizeof(fbb), f);
     (void)fclose(f);
-    app_spec spec = {"mines", "test", false, 0, 0, 0, NULL};
+    static const app_spec spec = {"mines", "test", false, 0, 0, 0, NULL}; /* A keeps it */
     char why[256];
     A.seed = seed;
     if (!app_start(&A, &spec, fbb, len, 80, 24, why, sizeof(why))) {
@@ -761,36 +798,9 @@ static const char *ms_check_field(const int mine[MS_V]) {
     return NULL;
 }
 
-static void test_mines(const char *path) {
-    if (!ms_start(path, 21)) {
-        return;
-    }
-    ms_click(40); /* the first step is always safe, and opens its ground */
-    if (ms_status("Boom") || ms_cell(40) != ' ') {
-        fail("mines", "the first cell opened was a mine, or had one beside it");
-        return;
-    }
-    for (int i = 0; i < MS_V && !ms_status("Boom") && !ms_status("Cleared"); i++) {
-        if (ms_cell(i) == 0xb7) {
-            ms_click(i);
-        }
-    }
-    if (!ms_status("Boom")) {
-        fail("mines", "opening every cell in turn did not hit a mine");
-        return;
-    }
-    int mine[MS_V];
-    int mines = 0;
-    for (int i = 0; i < MS_V; i++) {
-        mine[i] = ms_cell(i) == '*' ? 1 : 0;
-        mines += mine[i];
-    }
-    const char *bad = mines == 10 ? ms_check_field(mine) : "a lost field does not show ten mines";
-    if (bad != NULL) {
-        fail("mines", bad);
-        return;
-    }
-    /* the same seed, the same first step: the same field, now cleared */
+/* The same seed, the same first step: the same field, now cleared round
+   flags, every safe cell opened by hand, and the sweep reported. */
+static void ms_clear(const char *path, const int mine[MS_V]) {
     if (!ms_start(path, 21)) {
         return;
     }
@@ -822,16 +832,57 @@ static void test_mines(const char *path) {
         fail("mines", "a flag is not kept, or a click opened it");
         return;
     }
+    ms_click(40);  /* open already: no step of the sweep */
+    int opens = 1; /* the first step's */
     for (int i = 0; i < MS_V; i++) {
         if (mine[i] == 0 && ms_cell(i) == 0xb7) {
             ms_click(i);
+            opens++;
         }
     }
     if (!ms_status("Cleared")) {
         fail("mines", "every safe cell open is not a win");
     }
+    if (sc_count != 1 || sc_value != opens) {
+        fail("mines", "a cleared field does not report the cells opened by hand");
+    }
 }
 
+static void test_mines(const char *path) {
+    if (!ms_start(path, 21)) {
+        return;
+    }
+    sc_count = 0;
+    ms_click(40); /* the first step is always safe, and opens its ground */
+    if (ms_status("Boom") || ms_cell(40) != ' ') {
+        fail("mines", "the first cell opened was a mine, or had one beside it");
+        return;
+    }
+    for (int i = 0; i < MS_V && !ms_status("Boom") && !ms_status("Cleared"); i++) {
+        if (ms_cell(i) == 0xb7) {
+            ms_click(i);
+        }
+    }
+    if (!ms_status("Boom")) {
+        fail("mines", "opening every cell in turn did not hit a mine");
+        return;
+    }
+    int mine[MS_V];
+    int mines = 0;
+    for (int i = 0; i < MS_V; i++) {
+        mine[i] = ms_cell(i) == '*' ? 1 : 0;
+        mines += mine[i];
+    }
+    const char *bad = mines == 10 ? ms_check_field(mine) : "a lost field does not show ten mines";
+    if (bad != NULL) {
+        fail("mines", bad);
+        return;
+    }
+    if (sc_count != 0) {
+        fail("mines", "a field not cleared reports a score");
+    }
+    ms_clear(path, mine);
+}
 /* Sokoban read off the screen: two columns a cell, the level's left wall
    the leftmost block, its top row two below the title; walls, goals (two
    dots), boxes ([ ], green on a goal) and the player (@@). Each level is
@@ -1096,10 +1147,16 @@ static void test_sokoban(const char *path) {
             fail("sokoban", "a level has no solution");
             return;
         }
+        sc_count = 0;
         sk_play(moves);
         if (!sk_status("Solved in")) {
             fail("sokoban", "the solution's moves did not solve the level");
             return;
+        }
+        char track[4];
+        (void)snprintf(track, sizeof(track), "%d", level);
+        if (sc_count != 1 || sc_value != (int32_t)strlen(moves) || strcmp(sc_track, track) != 0) {
+            fail("sokoban", "a solved level does not report its moves on its track");
         }
         key("n");
         drain();
@@ -1142,6 +1199,7 @@ static void test_narrow(const char *path, const char *name) {
 }
 
 int main(int argc, char **argv) {
+    A.score = took_score;
     for (int i = 1; i < argc; i++) {
         play(argv[i]);
         if (strstr(argv[i], "lights") != NULL) {
