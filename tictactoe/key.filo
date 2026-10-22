@@ -1,0 +1,24 @@
+; 0, 1 or 2 players at the question; on the board the arrows (or w a s d)
+; move, space or Enter plays the square, 1 to 9 play one by number (from
+; the top left), a click plays the one under it; r is a new game, m the
+; question again.
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((= MODE "ask")
+    (cond ((= KEY 48) (start 0)) ((= KEY 49) (start 1)) ((= KEY 50) (start 2)) (else #f)))
+  ((or (= KEY 109) (= KEY 77)) (set MODE "ask"))
+  ((not (= MODE "play")) #f)
+  ((> (winner B) 0) (if (or (= KEY 32) (= KEY 13) (= KEY 114) (= KEY 82)) (new-game) #f))
+  ((or (= KEY 114) (= KEY 82)) (new-game))
+  ((machine-turn?) #f)
+  (else
+    (let ((r (floor (/ AT 3))) (c (- AT (* 3 (floor (/ AT 3))))))
+      (cond
+        ((or (= KEY KEY_UP) (= KEY 119)) (set AT (+ (* 3 (modulo (+ r 2) 3)) c)))
+        ((or (= KEY KEY_DOWN) (= KEY 115)) (set AT (+ (* 3 (modulo (+ r 1) 3)) c)))
+        ((or (= KEY KEY_LEFT) (= KEY 97)) (set AT (+ (* 3 r) (modulo (+ c 2) 3))))
+        ((or (= KEY KEY_RIGHT) (= KEY 100)) (set AT (+ (* 3 r) (modulo (+ c 1) 3))))
+        ((or (= KEY 32) (= KEY 13)) (human-move AT))
+        ((and (>= KEY 49) (<= KEY 57)) (human-move (- KEY 49)))
+        ((= KEY KEY_CLICK) (let ((i (hit))) (if (>= i 0) (human-move i) #f)))
+        (else #f)))))

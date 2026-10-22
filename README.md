@@ -19,6 +19,7 @@ the loop are [filo-term](https://github.com/crgimenes/filo-term)'s app.
 | `filo-wumpus` | Hunt the Wumpus (Gregory Yob, 1973): a cave of twenty rooms, pits, bats and five crooked arrows; typed commands |
 | `filo-mines` | Minesweeper, nine by nine with ten mines; the first step is always safe; a click opens, x makes it flag |
 | `filo-sokoban` | Sokoban: push every box onto a goal; six levels of the board's own, each solvable (the tests solve them) |
+| `filo-tictactoe` | Tic-tac-toe for one player (the machine never loses; the tests play it every game a person could), two, or none: then it plays itself, faster and faster, and finds another game it knows |
 
 Each one keeps to the budgets a board gives a program (20,000 steps a key,
 200,000 a frame), so the same bundle runs on the desktop and on a board.
@@ -29,7 +30,7 @@ Each one keeps to the budgets a board gives a program (20,000 steps a key,
 brew install crgimenes/tap/filo-games
 ```
 
-installs the ten games: filo-donut, filo-snake, filo-down, filo-fire, filo-lights, filo-twenty48, filo-mastermind, filo-wumpus, filo-mines and filo-sokoban.
+installs the eleven games: filo-donut, filo-snake, filo-down, filo-fire, filo-lights, filo-twenty48, filo-mastermind, filo-wumpus, filo-mines, filo-sokoban and filo-tictactoe.
 Or take a binary from the
 [releases](https://github.com/crgimenes/filo-games/releases): macOS
 (universal, arm64 and x86_64) and Linux (static, amd64 and arm64), nothing

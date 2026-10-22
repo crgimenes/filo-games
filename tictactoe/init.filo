@@ -1,0 +1,324 @@
+; Tic-tac-toe, in Filo, for one player (against the machine), two (on one
+; keyboard) or none. The machine plays by the rules a perfect player keeps
+; (win, block, fork, block a fork, centre, opposite corner, corner, side),
+; so it never loses; the tests play it against every game a person could.
+; With no players it plays itself, faster and faster, every game a draw,
+; until it tries the other game it knows (WarGames, 1983).
+
+(def CELL_W 5) ; a cell is five columns by three rows, the lines between
+(def CELL_H 3)
+(def GRID_W 17)
+(def GRID_H 11)
+
+(def MODE "ask") ; ask, play, wopr, war, end
+(def PLAYERS 1)
+(def B (list 0 0 0 0 0 0 0 0 0)) ; 0 empty, 1 X, 2 O
+(def TURN 1) ; X always moves first
+(def HUMAN 1) ; one player: the mark the person plays; the starts alternate
+(def AT 4)
+(def WAIT 0) ; ms before the machine's next move
+(def X_WINS 0)
+(def O_WINS 0)
+(def DRAWS 0)
+(def T 0) ; ms into the war, or into the last words
+
+(def LINES
+  (list (list 0 1 2) (list 3 4 5) (list 6 7 8) (list 0 3 6) (list 1 4 7) (list 2 5 8) (list 0 4 8)
+        (list 2 4 6)))
+(def EMPTY (list 0 0 0 0 0 0 0 0 0))
+
+(def other (fn (p) (- 3 p)))
+(def modulo (fn (a n) (- a (* n (floor (/ a n))))))
+(def put (fn (b i p) (map (fn (j) (if (= j i) p (nth b j))) (range 9))))
+(def empties (fn (b) (filter (fn (i) (= (nth b i) 0)) (range 9))))
+(def count-in (fn (b l p) (length (filter (fn (i) (= (nth b i) p)) l))))
+(def pick (fn (l) (nth l (random (length l)))))
+
+; 1 or 2 for a line of three, 3 for a full board with none, 0 while it goes on
+(def winner
+  (fn (b)
+    (let ((w (fold (fn (acc l) (if (> acc 0) acc (let ((v (nth b (head l)))) (if (and (> v 0) (= (count-in b l v) 3)) v 0))))
+                   0 LINES)))
+      (cond ((> w 0) w) ((is-empty (empties b)) 3) (else 0)))))
+
+; For each square, the pairs of squares that make a line with it: what a
+; mark there would finish or threaten is read off them, with no board
+; copied (a copy a question was the run's memory, gone in one move).
+(def THROUGH
+  (map (fn (m) (map (fn (l) (filter (fn (i) (not (= i m))) l)) (filter (fn (l) (> (length (filter (fn (i) (= i m)) l)) 0)) LINES)))
+       (range 9)))
+; the square's value, with m counted as holding mp
+(def at-with (fn (b i m mp) (if (= i m) mp (nth b i))))
+; pairs through square s holding one of want's and a free square
+(def pairs-of
+  (fn (b s m mp want)
+    (length (filter (fn (pr) (let ((x (at-with b (nth pr 0) m mp)) (y (at-with b (nth pr 1) m mp)))
+                              (or (and (= x want) (= y 0)) (and (= x 0) (= y want)))))
+                    (nth THROUGH s)))))
+(def pairs-full
+  (fn (b s p) (length (filter (fn (pr) (and (= (nth b (nth pr 0)) p) (= (nth b (nth pr 1)) p))) (nth THROUGH s)))))
+; the free squares that make a line of p's
+(def wins-for (fn (b p) (filter (fn (i) (> (pairs-full b i p) 0)) (empties b))))
+; the free squares that leave p two lines to finish at once
+(def forks-for (fn (b p) (filter (fn (i) (>= (pairs-of b i -1 0 p) 2)) (empties b))))
+
+; m makes a line the other has to block, and the block gives them no fork
+(def safe-force?
+  (fn (b p m)
+    (let ((made (filter (fn (pr) (let ((x (nth b (nth pr 0))) (y (nth b (nth pr 1))))
+                                   (or (and (= x p) (= y 0)) (and (= x 0) (= y p)))))
+                        (nth THROUGH m))))
+      (if (= (length made) 1)
+        (let ((pr (head made)))
+          (let ((r (if (= (nth b (nth pr 0)) 0) (nth pr 0) (nth pr 1))))
+            (< (pairs-of b r m p (other p)) 2)))
+        #f))))
+
+(def CORNERS (list 0 2 6 8))
+(def SIDES (list 1 3 5 7))
+
+(def choose
+  (fn (b p)
+    (let ((q (other p)) (free (empties b)))
+      (let ((win (wins-for b p)))
+        (if (not (is-empty win))
+          (pick win)
+          (let ((block (wins-for b q)))
+            (if (not (is-empty block))
+              (pick block)
+              (let ((fork (forks-for b p)))
+                (if (not (is-empty fork))
+                  (pick fork)
+                  (let ((theirs (forks-for b q)))
+                    (cond
+                      ((= (length theirs) 1) (head theirs))
+                      ((> (length theirs) 1)
+                        (let ((force (filter (fn (m) (safe-force? b p m)) free)))
+                          (pick (if (is-empty force) theirs force))))
+                      ((= (nth b 4) 0) 4)
+                      (else
+                        (let ((opposite (filter (fn (c) (and (= (nth b c) 0) (= (nth b (- 8 c)) q))) CORNERS))
+                              (corners (filter (fn (c) (= (nth b c) 0)) CORNERS)))
+                          (cond
+                            ((not (is-empty opposite)) (pick opposite))
+                            ((not (is-empty corners)) (pick corners))
+                            (else (pick (filter (fn (c) (= (nth b c) 0)) SIDES)))))))))))))))))
+
+(def tally
+  (fn (w)
+    (cond ((= w 1) (set X_WINS (+ X_WINS 1)))
+          ((= w 2) (set O_WINS (+ O_WINS 1)))
+          ((= w 3) (set DRAWS (+ DRAWS 1)))
+          (else #t))))
+
+; a mark on a free square, by whoever's turn it is; the board's end counted
+(def play-at
+  (fn (i)
+    (if (or (> (winner B) 0) (not (= (nth B i) 0)))
+      #f
+      (do
+        (set B (put B i TURN))
+        (set TURN (other TURN))
+        (tally (winner B))
+        #t))))
+
+(def machine-turn? (fn () (and (= MODE "play") (= PLAYERS 1) (not (= TURN HUMAN)) (= (winner B) 0))))
+(def THINK_MS 350)
+
+(def new-game
+  (fn ()
+    (set B EMPTY)
+    (set TURN 1)
+    (set AT 4)
+    (if (= PLAYERS 1) (set HUMAN (other HUMAN)) #t)
+    (set WAIT THINK_MS)))
+
+(def start
+  (fn (players)
+    (set PLAYERS players)
+    (set X_WINS 0)
+    (set O_WINS 0)
+    (set DRAWS 0)
+    (set HUMAN 2) ; new-game turns it: the person starts the first game
+    (new-game)
+    (set MODE (if (= players 0) "wopr" "play"))
+    (set GAMES 0)
+    (set STEP_MS 400)))
+
+; ---- no players: the machine against itself, then the war, then the moral ----
+(def GAMES 0) ; games the machine has played itself
+(def STEP_MS 400) ; between its moves, shorter every game
+(def WOPR_GAMES 36)
+
+(def wopr-tick
+  (fn ()
+    (set WAIT (- WAIT MS))
+    (if (> WAIT 0)
+      #t
+      (if (> (winner B) 0)
+        (do
+          (set GAMES (+ GAMES 1))
+          (set STEP_MS (math-max 15 (floor (* STEP_MS 0.75))))
+          (if (>= GAMES WOPR_GAMES)
+            (do (set MODE "war") (set T 0) (set MISSILES (launches)))
+            (do (set B EMPTY) (set TURN 1) (set WAIT STEP_MS))))
+        (do
+          (play-at (choose B TURN))
+          (set WAIT (if (> (winner B) 0) (* STEP_MS 2) STEP_MS)))))))
+
+; The maps (crg's), and where on them a warhead may land: (row column).
+(def US
+  (list " ,------~~v,"
+        " |'         ¯\\   ,__/¯||"
+        "/             \\,/     /"
+        "|                    /"
+        "\\                   |"
+        " \\                 /"
+        "  ^¯~_            /"
+        "      '~~,  ,¯~¯\\ \\"
+        "          \\/     \\/"
+        ""
+        ""
+        "   UNITED STATES"))
+(def USSR
+  (list "              _--^\\"
+        "            _/    /,_"
+        "   ,,   ,,/^      ¯  v¯v-__"
+        "   |'~^¯                   ¯\\"
+        " _/                     _  /^"
+        "/                   ,~~^/|¯¯"
+        "|          __,,  v__\\   \\/"
+        " ^~       /    ~¯  //"
+        "   \\~,  ,/         ¯"
+        "      ~~"
+        ""
+        "      SOVIET UNION"))
+(def US_AT (list (list 2 4) (list 3 9) (list 4 14) (list 3 17) (list 5 10) (list 2 12) (list 6 13) (list 4 6)))
+(def USSR_AT (list (list 3 10) (list 4 6) (list 4 15) (list 5 4) (list 5 12) (list 3 20) (list 6 6) (list 4 22)))
+(def MAP_W 30)
+(def MAP_H 12)
+(def FLY_MS 1800)
+
+; A launch: (from-us? start-ms from to), in waves that grow, each side
+; answering the other.
+(def MISSILES (list))
+(def launches
+  (fn ()
+    (fold
+      (fn (acc k)
+        (list-concat acc
+          (map (fn (j) (list (= (modulo j 2) 0) (+ (* k 1500) (* j 220)) (random 8) (random 8)))
+               (range (* 2 (+ k 1))))))
+      (list)
+      (range 5))))
+(def war-over-ms (fn () (+ (fold (fn (m l) (math-max m (nth l 1))) 0 MISSILES) FLY_MS 3000)))
+
+(def LAST_WORDS
+  (list "GREETINGS, PROFESSOR FALKEN." "" "A STRANGE GAME." "THE ONLY WINNING MOVE IS NOT TO PLAY."))
+(def TYPE_MS 60)
+
+; ---- the screen ----
+(def gx (fn () (math-max 0 (floor (/ (- W GRID_W) 2)))))
+(def gy (fn () (math-max 3 (floor (/ (- H GRID_H) 2)))))
+
+; the square under a click, -1 off the board (the lines count as off)
+(def hit
+  (fn ()
+    (let ((x (- MX (gx))) (y (- MY (gy))))
+      (let ((c (floor (/ x (+ CELL_W 1)))) (r (floor (/ y (+ CELL_H 1)))))
+        (if (and (>= x 0) (>= y 0) (< c 3) (< r 3)
+              (< (- x (* c (+ CELL_W 1))) CELL_W) (< (- y (* r (+ CELL_H 1))) CELL_H))
+          (+ (* r 3) c)
+          -1)))))
+
+(def centred (fn (row text) (print-at row (math-max 0 (floor (/ (- W (text-width text)) 2))) text)))
+
+; The keys under the game, centred; on a narrow screen (a phone) broken
+; between items onto as many rows as they need.
+(def keys-at
+  (fn (row text)
+    (let ((lines (fold (fn (acc part)
+                         (let ((last (if (is-empty acc) "" (nth acc (- (length acc) 1)))))
+                           (if (and (not (is-empty acc)) (<= (text-width (str-concat last " · " part)) W))
+                             (list-concat (map (fn (i) (nth acc i)) (range (- (length acc) 1))) (list (str-concat last " · " part)))
+                             (list-append acc part))))
+                       (list)
+                       (str-split " · " text))))
+      (map (fn (i) (let ((l (nth lines i))) (print-at (+ row i) (math-max 0 (floor (/ (- W (text-width l)) 2))) l)))
+           (range (length lines))))))
+
+; ---- the war ----
+; The maps side by side where the window has room for both, their names
+; alone where it has not (a phone); a warhead's arc over them, its trail
+; left on the screen, a blast where it lands and the mark after.
+(def nearest (fn (v) (floor (+ v 0.5))))
+
+(def war-places
+  (fn ()
+    (if (>= W 66)
+      (let ((gap (math-max 4 (math-min 16 (- W 64)))))
+        (let ((ux (math-max 0 (floor (/ (- W (+ MAP_W MAP_W gap)) 2)))))
+          (let ((y (math-max 4 (floor (/ (- H MAP_H) 2))))) (list #t ux y (+ ux MAP_W gap) y))))
+      (list #f 1 4 (math-max 0 (- W 14)) (math-max 7 (- H 5))))))
+
+; where target i of a side is on the screen, (row col)
+(def target
+  (fn (places us i)
+    (let ((wide (nth places 0)) (x (nth places (if us 1 3))) (y (nth places (if us 2 4))))
+      (if wide
+        (let ((at (nth (if us US_AT USSR_AT) i))) (list (+ y (nth at 0)) (+ x (nth at 1))))
+        (list (+ y 1) (+ x (+ 1 i)))))))
+
+; a warhead in two passes: its trail under the maps (gone a while after it
+; lands), its head, blast or mark over them
+(def draw-missile
+  (fn (places m marks)
+    (let ((us (nth m 0)) (start (nth m 1)))
+      (let ((from (target places us (nth m 2))) (to (target places (not us) (nth m 3)))
+            (p (math-min 1 (/ (- T start) FLY_MS))))
+        (let ((r0 (nth from 0)) (c0 (nth from 1)) (r1 (nth to 0)) (c1 (nth to 1)))
+          (let ((steps (math-max 8 (abs (- c1 c0)) (* 2 (abs (- r1 r0)))))
+                (arc (math-max 0 (math-min 8 (- (math-min r0 r1) 2)))))
+            (fg (if us 39 196))
+            (if (or marks (> (- T start FLY_MS) 1200))
+              #t
+              (map
+                (fn (k)
+                  (let ((f (/ k steps)))
+                    (print-at (nearest (- (+ r0 (* (- r1 r0) f)) (* arc 4 f (- 1 f)))) (nearest (+ c0 (* (- c1 c0) f))) "·")))
+                (range (+ 1 (floor (* steps p))))))
+            (cond
+              ((not marks) #t)
+              ((< p 1)
+                (let ((f (/ (floor (* steps p)) steps)))
+                  (print-at (nearest (- (+ r0 (* (- r1 r0) f)) (* arc 4 f (- 1 f)))) (nearest (+ c0 (* (- c1 c0) f))) "•")))
+              (else
+              (let ((age (- T start FLY_MS)))
+                (if (< age 900)
+                  (do (fg (if (< age 450) 226 208)) (attr A_BOLD)
+                      (print-at r1 c1 (nth (list "+" "*" "✶" "@" "*") (math-min 4 (floor (/ age 180)))))
+                      (attr 0))
+                  (do (fg 160) (print-at r1 c1 "*"))))))))))))
+
+(def draw-war
+  (fn ()
+    (let ((places (war-places)))
+      (fg 196)
+      (attr A_BOLD)
+      (centred 1 "GLOBAL THERMONUCLEAR WAR")
+      (attr 0)
+      (map (fn (m) (if (>= T (nth m 1)) (draw-missile places m #f) #t)) MISSILES)
+      (if (nth places 0)
+        (do
+          (fg 250)
+          (map (fn (i) (print-at (+ (nth places 2) i) (nth places 1) (nth US i))) (range MAP_H))
+          (map (fn (i) (print-at (+ (nth places 4) i) (nth places 3) (nth USSR i))) (range MAP_H)))
+        (do
+          (fg 250)
+          (print-at (nth places 2) (nth places 1) "UNITED STATES")
+          (print-at (nth places 4) (nth places 3) "SOVIET UNION")))
+      (map (fn (m) (if (>= T (nth m 1)) (draw-missile places m #t) #t)) MISSILES)
+      (fg 244)
+      (centred (- H 2) "WINNER: NONE"))))
+
+(def human-move (fn (i) (if (play-at i) (do (set AT i) (set WAIT THINK_MS)) #f)))

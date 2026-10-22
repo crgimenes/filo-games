@@ -1,0 +1,10 @@
+; The machine's moves, the war and the last words go by time. A throttled
+; tab does not bank it: a long slice is one move, or a jump in the film.
+(cond
+  ((= MODE "wopr") (wopr-tick))
+  ((= MODE "war")
+    (do (set T (+ T MS)) (if (>= T (war-over-ms)) (do (set MODE "end") (set T 0)) #t)))
+  ((= MODE "end") (set T (+ T MS)))
+  ((machine-turn?)
+    (do (set WAIT (- WAIT MS)) (if (<= WAIT 0) (play-at (choose B TURN)) #t)))
+  (else #t))

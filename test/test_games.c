@@ -1166,6 +1166,145 @@ static void test_sokoban(const char *path) {
     }
 }
 
+/* Tic-tac-toe read off the screen: on 80 by 24 a square's mark sits at
+   (7 + 4r, 33 + 6c), the status two rows under the grid. One player: the
+   machine is played every game a person could play, from the first move
+   and from the second, by replaying the moves into a fresh start (the same
+   seed: the machine's picks between equal moves come out the same); it
+   must never lose. No players: every game a draw, then the war, then the
+   last words. */
+enum { TT_Y = 7, TT_X = 33, TT_PATHS_MAX = 4096 };
+
+static const uint8_t *tt_fbb;
+static size_t tt_len;
+static int tt_games;
+
+static bool tt_start(bool machine_first) {
+    static const app_spec spec = {"tictactoe", "test", false, 0, 0, 0, NULL}; /* A keeps it */
+    char why[256];
+    A.seed = 13;
+    if (!app_start(&A, &spec, tt_fbb, tt_len, 80, 24, why, sizeof(why))) {
+        fail("tictactoe", why);
+        return false;
+    }
+    key("1");
+    if (machine_first) {
+        key("r");
+    }
+    app_tick(&A, 400); /* the machine's move, when it is its turn */
+    drain();
+    return true;
+}
+
+static int tt_free(int i) {
+    uint32_t cp = A.target.cells[TT_Y + (4 * (i / 3))][TT_X + (6 * (i % 3))].cp;
+    return (cp != 'X' && cp != 'O') ? 1 : 0;
+}
+
+/* every way the person can go on from these moves; false on a failure */
+static bool tt_walk(bool machine_first, const int *moves, int n) {
+    if (!tt_start(machine_first)) {
+        return false;
+    }
+    for (int k = 0; k < n; k++) {
+        const char d[2] = {(char)('1' + moves[k]), '\0'};
+        key(d);
+        app_tick(&A, 400);
+        drain();
+    }
+    if (A.error[0] != '\0') {
+        fail("tictactoe", A.error);
+        return false;
+    }
+    if (sk_status("you win")) {
+        fail("tictactoe", "a person beat the machine");
+        return false;
+    }
+    if (sk_status("space plays again")) {
+        tt_games++;
+        return true;
+    }
+    int next[9];
+    for (int k = 0; k < n; k++) {
+        next[k] = moves[k];
+    }
+    int open = 0;
+    for (int i = 0; i < 9; i++) {
+        if (tt_free(i) != 0) {
+            open++;
+            next[n] = i;
+            if (!tt_walk(machine_first, next, n + 1)) {
+                return false;
+            }
+        }
+    }
+    if (open == 0) {
+        fail("tictactoe", "a full board that is not over");
+        return false;
+    }
+    return true;
+}
+
+static void tt_wopr(void) {
+    static const app_spec spec = {"tictactoe", "test", false, 0, 0, 0, NULL};
+    char why[256];
+    A.seed = 21;
+    if (!app_start(&A, &spec, tt_fbb, tt_len, 80, 24, why, sizeof(why))) {
+        fail("tictactoe", why);
+        return;
+    }
+    key("0");
+    int war = 0;
+    int games = 0;
+    for (int t = 0; t < 120000 && !sk_status("NOT TO PLAY."); t += 40) {
+        app_tick(&A, 40);
+        drain();
+        if (A.error[0] != '\0') {
+            fail("tictactoe", A.error);
+            return;
+        }
+        if (sk_status("WINNER: X") || sk_status("WINNER: O")) {
+            fail("tictactoe", "the machine beat itself");
+            return;
+        }
+        if (sk_status("GAMES PLAYED 35 ")) {
+            games = 1;
+        }
+        if (sk_status("GLOBAL THERMONUCLEAR WAR")) {
+            war = 1;
+        }
+    }
+    if (games == 0 || war == 0 || !sk_status("GREETINGS, PROFESSOR FALKEN.") ||
+        !sk_status("THE ONLY WINNING MOVE IS NOT TO PLAY.")) {
+        fail("tictactoe", "no players: the draws, the war or the last words did not come");
+    }
+}
+
+static void test_tictactoe(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        fail("tictactoe", "cannot read the bundle");
+        return;
+    }
+    tt_len = fread(fbb, 1, sizeof(fbb), f);
+    (void)fclose(f);
+    tt_fbb = fbb;
+    tt_games = 0;
+    if (!tt_walk(false, NULL, 0)) {
+        return;
+    }
+    int first = tt_games;
+    if (!tt_walk(true, NULL, 0)) {
+        return;
+    }
+    /* the machine's answers prune the tree: 87 games from the first move
+       and 56 from the second at this seed */
+    if (first < 50 || tt_games - first < 20) {
+        fail("tictactoe", "too few games were played to tell anything");
+    }
+    tt_wopr();
+}
+
 /* A phone's screen, 35 by 20: the keys under a game break onto rows
    rather than run off the edge (their last word, esc, is on screen), and
    the wumpus's story breaks at the width (the tunnels' numbers show). */
@@ -1220,8 +1359,11 @@ int main(int argc, char **argv) {
         if (strstr(argv[i], "sokoban") != NULL) {
             test_sokoban(argv[i]);
         }
+        if (strstr(argv[i], "tictactoe") != NULL) {
+            test_tictactoe(argv[i]);
+        }
         static const char *const narrow[] = {
-            "lights", "twenty48", "mastermind", "mines", "sokoban", "wumpus",
+            "lights", "twenty48", "mastermind", "mines", "sokoban", "wumpus", "tictactoe",
         };
         for (size_t k = 0; k < sizeof(narrow) / sizeof(narrow[0]); k++) {
             if (strstr(argv[i], narrow[k]) != NULL) {

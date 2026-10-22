@@ -11,7 +11,7 @@ FILO ?= ../clang_filo
 FILO_CLI ?= $(FILO)/build/filo
 CLI_DEP = $(filter $(FILO)/build/filo,$(FILO_CLI))
 
-GAMES = donut snake down fire lights twenty48 mastermind wumpus mines sokoban
+GAMES = donut snake down fire lights twenty48 mastermind wumpus mines sokoban tictactoe
 
 WARN = -Wall -Wextra -Werror -Wshadow -Wconversion -Wdouble-promotion -Wundef
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
