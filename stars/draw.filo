@@ -1,0 +1,10 @@
+; The field draws itself as it flies; a paint only writes the lines under
+; it. A blank canvas means the screen was just loaded, resized or painted
+; over.
+(if FRESH (do (set FH (math-max 1 (- H 2))) (frame)))
+
+(footer "stars")
+(attr A_DIM)
+(fill (- H 2) 0 1 W " ")
+(print-at (- H 2) 1 (if paused "SPACE flies on · ESC leaves" "SPACE holds it · ESC leaves"))
+(attr 0)

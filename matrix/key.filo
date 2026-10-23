@@ -1,0 +1,4 @@
+(cond
+  ((= KEY KEY_ESC) (done))
+  ((= KEY 32) (set paused (not paused)))
+  (else #t))

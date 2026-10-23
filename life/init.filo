@@ -1,0 +1,180 @@
+; Conway's Life on half blocks: a text cell is two cells of the world, the
+; upper one in the glyph's colour and the lower in its ground, so the world
+; has twice as many rows as the screen gives it. A cell is white-hot when it
+; is born and cools to embers as it lives on.
+;
+; There is no array, so the world lives in the cells' tags, and a tag holds
+; two generations: eight bits are the one on screen, eight the one being
+; made, and they swap roles every generation. A cell reads its neighbours
+; from the half nobody is writing, so the next generation is made in place,
+; in one pass. A half is the age of the upper cell (four bits) and of the
+; lower (four more): 0 dead, then 1 to 15.
+;
+; That pass reads every cell's neighbours, and a run has a step limit, so a
+; generation is made a few rows a tick, and the world is as wide as the
+; screen up to 80 columns and as tall as it up to 22 rows, as the fire is.
+
+(keep-canvas)
+
+(def STEP_MS 20)
+(def LIFE_W_MAX 80)
+(def LIFE_H_MAX 22)
+(def CELLS_A_TICK 480) ; text cells a tick makes: about 140,000 steps at most
+(def STILL_MAX 60)     ; generations of one population before the world is sown again
+
+; age to colour: dead is the terminal's own ground, then white-hot to embers
+(def RAMP (list C_DEFAULT 230 222 214 214 208 208 208 166 166 166 166 130 130 130 130))
+
+(def LW 0)   ; the world's columns
+(def LH 0)   ; and its text rows
+(def LEFT 0) ; where it starts
+(def TOP 0)
+(def STEP 0) ; text rows a tick makes
+
+(def ODD #f)    ; the generation on screen is the tag's high half
+(def ROW 0)     ; the next text row to make
+(def SOWING #t) ; this pass sows at random instead of following the rule
+(def GEN 0)
+(def POP 0)     ; cells alive in the generation being made
+(def LAST 0)    ; and in the one before it
+(def STILL 0)   ; generations the population has not changed
+(def paused #f)
+(def waited 0)
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+(def measure
+  (fn ()
+    (set LW (math-min W LIFE_W_MAX))
+    (set LH (math-max 1 (math-min (- H 2) LIFE_H_MAX)))
+    (set LEFT (floor (/ (- W LW) 2)))
+    (set TOP (math-max 0 (floor (/ (- H 2 LH) 2))))
+    (set STEP (math-max 1 (floor (/ CELLS_A_TICK LW))))))
+
+(def sow
+  (fn ()
+    (set SOWING #t)
+    (set ROW 0)
+    (set POP 0)
+    (set STILL 0)))
+
+; Dark everywhere: every tag 0, every cell dead in both generations.
+(def clear
+  (fn ()
+    (bg C_DEFAULT)
+    (tag 0)
+    (fill 0 0 (math-max 0 (- H 1)) W " ")))
+
+;
+; the generation on screen in a tag, and the one before it
+(def shown (fn (t) (if ODD (floor (/ t 256)) (% t 256))))
+(def before (fn (t) (if ODD (% t 256) (floor (/ t 256)))))
+
+; What screen column c says around screen row r, whose neighbours are the
+; rows up and down: the lower cell above (u), the ages of the two cells
+; here, the upper cell below (d), what the column adds to the upper cell's
+; neighbourhood and to the lower's when it is the one beside them, and the
+; tag here as it is.
+(def column
+  (fn (r c up down)
+    (let ((u (if (>= (shown (tag-at up c)) 16) 1 0))
+          (raw (tag-at r c))
+          (d (if (> (% (shown (tag-at down c)) 16) 0) 1 0)))
+      (let ((here (shown raw)))
+        (let ((ta (% here 16)) (tb (floor (/ here 16))))
+          (let ((t (if (> ta 0) 1 0)) (b (if (> tb 0) 1 0)))
+            (tuple (+ u t b) (+ t b d) u ta tb d raw)))))))
+
+; The age a cell reaches with n neighbours: born at 1 with three, one older
+; while two or three keep it, dead otherwise. Fifteen is as old as it shows.
+(def next-age
+  (fn (age n)
+    (cond ((= n 3) (math-min 15 (+ age 1)))
+          ((and (= n 2) (> age 0)) (math-min 15 (+ age 1)))
+          (else 0))))
+
+; One text cell at screen row and col: it shows the new generation, and its
+; tag keeps the old one beside it until the pass is over.
+(def put
+  (fn (row col old top bottom)
+    (let ((new (+ top (* 16 bottom))))
+      (do
+        (tag (if ODD (+ new (* 256 old)) (+ old (* 256 new))))
+        (cond
+          ((> top 0) (do (fg (nth RAMP top)) (bg (nth RAMP bottom)) (print-at row col "▀")))
+          ((> bottom 0) (do (fg (nth RAMP bottom)) (bg C_DEFAULT) (print-at row col "▄")))
+          (else (do (bg C_DEFAULT) (print-at row col " "))))))))
+
+; Text row r of the next generation, a column at a time, carrying the sums
+; of the column to the left and what the middle one is, so each column's
+; tags are read once. A cell whose new generation is what it shows and what
+; the tag's other half already holds is left as it is: most of a world is
+; dead ground that stays dead. The population goes round with the columns:
+; the loop writes no global.
+(def make-row
+  (fn (r)
+    (let ((row (+ TOP r))
+          (up (+ TOP (if (= r 0) (- LH 1) (- r 1))))
+          (down (+ TOP (if (= r (- LH 1)) 0 (+ r 1))))
+          (right (+ LEFT LW -1)))
+      (letv (ls1 ls2 lu lta ltb ld lraw)
+        (column row right up down)
+        (letv (cs1 cs2 cu cta ctb cd craw)
+          (column row LEFT up down)
+          (letv (a b c d e f g h i pop)
+            (fold
+              (fn (acc col)
+                (letv (ls1 ls2 cu cta ctb cd craw cs1 cs2 pop) acc
+                  (letv (rs1 rs2 ru rta rtb rd rraw)
+                    (column row (if (= col right) LEFT (+ col 1)) up down)
+                    (let ((top (next-age cta (+ ls1 rs1 cu (if (> ctb 0) 1 0))))
+                          (bottom (next-age ctb (+ ls2 rs2 (if (> cta 0) 1 0) cd)))
+                          (old (+ cta (* 16 ctb))))
+                      (let ((new (+ top (* 16 bottom))))
+                        (do
+                          (if (or (not (= new old)) (not (= new (before craw))))
+                            (put row col old top bottom))
+                          (tuple cs1 cs2 ru rta rtb rd rraw rs1 rs2
+                                 (+ pop (if (> top 0) 1 0) (if (> bottom 0) 1 0)))))))))
+              (tuple ls1 ls2 cu cta ctb cd craw cs1 cs2 0)
+              (range LEFT (+ LEFT LW)))
+            pop))))))
+
+; Text row r sown at random, three cells in ten alive.
+(def sow-row
+  (fn (r)
+    (let ((row (+ TOP r)))
+      (fold
+        (fn (pop col)
+          (let ((top (if (< (random 100) 30) 1 0)) (bottom (if (< (random 100) 30) 1 0)))
+            (do
+              (put row col (shown (tag-at row col)) top bottom)
+              (+ pop top bottom))))
+        0
+        (range LEFT (+ LEFT LW))))))
+
+; A tick's share of the pass. When the last row is made the halves swap, and
+; a world that has settled, or died, is sown again.
+(def work
+  (fn ()
+    (let ((last (math-min LH (+ ROW STEP))))
+      (do
+        (set POP (fold (fn (p r) (+ p (if SOWING (sow-row r) (make-row r)))) POP (range ROW last)))
+        (set ROW last)
+        (if (>= ROW LH)
+          (do
+            (set ODD (not ODD))
+            (set ROW 0)
+            (set GEN (if SOWING 0 (+ GEN 1)))
+            (set SOWING #f)
+            (set STILL (if (= POP LAST) (+ STILL 1) 0))
+            (set LAST POP)
+            (set POP 0)
+            (if (or (> STILL STILL_MAX) (= LAST 0)) (sow))))))))

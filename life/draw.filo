@@ -1,0 +1,16 @@
+; The world draws itself as it is made; a paint only writes the lines under
+; it. A blank canvas means the screen was just loaded, resized or painted
+; over, and the world is sown again.
+(if FRESH (do (measure) (clear) (sow)))
+
+(footer "life")
+(attr A_DIM)
+(fg C_DEFAULT)
+(bg C_DEFAULT)
+(tag 0)
+(fill (- H 2) 0 1 W " ")
+(print-at (- H 2) 1
+  (str-fmt "%s · %s · ESC leaves"
+    (if SOWING "sowing" (str-fmt "generation %d" GEN))
+    (if paused "SPACE goes on" "SPACE holds it")))
+(attr 0)

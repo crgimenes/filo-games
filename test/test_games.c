@@ -1337,6 +1337,115 @@ static void test_narrow(const char *path, const char *name) {
     }
 }
 
+/* Life read off the screen at 80 by 24: the world is the whole width and 22
+   text rows of two cells each, and the line under it says the generation,
+   or that the world is being sown. Each generation shown must be the one
+   before it stepped by the rule, on a torus, which this test works out on
+   its own. */
+enum { LF_W = 80, LF_H = 44, LF_ROWS = LF_H / 2 };
+
+static void lf_read(uint8_t g[LF_H][LF_W]) {
+    for (int r = 0, y = 0; r < LF_ROWS; r++, y += 2) {
+        for (int c = 0; c < LF_W; c++) {
+            const cv_cell *cell = &A.target.cells[r][c];
+            g[y][c] = cell->cp == 0x2580 ? 1 : 0; /* ▀ */
+            g[y + 1][c] =
+                (cell->cp == 0x2580 && cell->bg != CV_COLOR_DEFAULT) || cell->cp == 0x2584 /* ▄ */
+                    ? 1
+                    : 0;
+        }
+    }
+}
+
+static void lf_step(uint8_t g[LF_H][LF_W], uint8_t out[LF_H][LF_W]) {
+    for (int y = 0; y < LF_H; y++) {
+        for (int x = 0; x < LF_W; x++) {
+            int n = 0;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dy != 0 || dx != 0) {
+                        n += g[(y + dy + LF_H) % LF_H][(x + dx + LF_W) % LF_W];
+                    }
+                }
+            }
+            out[y][x] = (n == 3 || (n == 2 && g[y][x] != 0)) ? 1 : 0;
+        }
+    }
+}
+
+static int lf_generation(void) {
+    char line[TERM_COLS_MAX + 1];
+    size_t n = 0;
+    for (uint16_t c = 0; c < A.target.cols; c++) {
+        uint32_t cp = A.target.cells[LF_ROWS][c].cp;
+        line[n++] = cp > 0 && cp < 0x80 ? (char)cp : ' ';
+    }
+    line[n] = '\0';
+    if (strstr(line, "sowing") != NULL) {
+        return -1;
+    }
+    const char *at = strstr(line, "generation ");
+    if (at == NULL) {
+        return -2;
+    }
+    char *end = NULL;
+    long gen = strtol(at + strlen("generation "), &end, 10);
+    if (end == at + strlen("generation ") || gen < 0 || gen > INT32_MAX) {
+        return -2;
+    }
+    return (int)gen;
+}
+
+static void test_life(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        fail("life", "cannot read the bundle");
+        return;
+    }
+    size_t len = fread(fbb, 1, sizeof(fbb), f);
+    (void)fclose(f);
+    app_spec spec = {"life", "test", false, 0, 0, 0, NULL};
+    char why[256];
+    A.seed = 7;
+    if (!app_start(&A, &spec, fbb, len, LF_W, LF_ROWS + 2, why, sizeof(why))) {
+        fail("life", why);
+        return;
+    }
+    static uint8_t was[LF_H][LF_W];
+    static uint8_t now[LF_H][LF_W];
+    static uint8_t want[LF_H][LF_W];
+    int last = -1;
+    int checked = 0;
+    for (int i = 0; i < 2000 && checked < 100; i++) {
+        app_tick(&A, 20);
+        drain();
+        int gen = lf_generation();
+        if (A.error[0] != '\0' || gen == -2) {
+            fail("life", A.error[0] != '\0' ? A.error : "no generation under the world");
+            return;
+        }
+        if (gen == last) {
+            continue;
+        }
+        lf_read(now);
+        if (last >= 0 && gen == last + 1) {
+            lf_step(was, want);
+            if (memcmp(now, want, sizeof(now)) != 0) {
+                char what[64];
+                (void)snprintf(what, sizeof(what), "generation %d does not follow the rule", gen);
+                fail("life", what);
+                return;
+            }
+            checked++;
+        }
+        memcpy(was, now, sizeof(was));
+        last = gen;
+    }
+    if (checked < 100) {
+        fail("life", "fewer than 100 generations seen");
+    }
+}
+
 int main(int argc, char **argv) {
     A.score = took_score;
     for (int i = 1; i < argc; i++) {
@@ -1361,6 +1470,9 @@ int main(int argc, char **argv) {
         }
         if (strstr(argv[i], "tictactoe") != NULL) {
             test_tictactoe(argv[i]);
+        }
+        if (strstr(argv[i], "life") != NULL) {
+            test_life(argv[i]);
         }
         static const char *const narrow[] = {
             "lights", "twenty48", "mastermind", "mines", "sokoban", "wumpus", "tictactoe",

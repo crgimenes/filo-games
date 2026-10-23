@@ -20,6 +20,9 @@ the loop are [filo-term](https://github.com/crgimenes/filo-term)'s app.
 | `filo-mines` | Minesweeper, nine by nine with ten mines; the first step is always safe; a click opens, x makes it flag |
 | `filo-sokoban` | Sokoban: push every box onto a goal; six levels of the board's own, each solvable (the tests solve them) |
 | `filo-tictactoe` | Tic-tac-toe for one player (the machine never loses; the tests play it every game a person could), two, or none: then it plays itself, faster and faster, and finds another game it knows |
+| `filo-life` | Conway's Life on half blocks, white-hot when born, cooling to embers; each cell's tag holds two generations, the one shown and the one being made (the tests check every generation against the rule) |
+| `filo-matrix` | the rain of the Matrix, half-width katakana; nothing is kept between frames, every drop and glyph comes from the frame's number |
+| `filo-stars` | a field of stars flying at the screen, each star a lap from the far plane to the eye |
 
 Each one keeps to the budgets a board gives a program (20,000 steps a key,
 200,000 a frame), so the same bundle runs on the desktop and on a board.
@@ -30,7 +33,7 @@ Each one keeps to the budgets a board gives a program (20,000 steps a key,
 brew install crgimenes/tap/filo-games
 ```
 
-installs the eleven games: filo-donut, filo-snake, filo-down, filo-fire, filo-lights, filo-twenty48, filo-mastermind, filo-wumpus, filo-mines, filo-sokoban and filo-tictactoe.
+installs the fourteen games: filo-donut, filo-snake, filo-down, filo-fire, filo-lights, filo-twenty48, filo-mastermind, filo-wumpus, filo-mines, filo-sokoban, filo-tictactoe, filo-life, filo-matrix and filo-stars.
 Or take a binary from the
 [releases](https://github.com/crgimenes/filo-games/releases): macOS
 (universal, arm64 and x86_64) and Linux (static, amd64 and arm64), nothing

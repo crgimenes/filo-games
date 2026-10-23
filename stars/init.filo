@@ -1,0 +1,69 @@
+; A field of stars flying at the screen: far is a dot, near is a star, and
+; nearer is brighter.
+;
+; Nothing is kept from one frame to the next. A star's life is a lap of LAP
+; frames, from the far plane to just short of the eye; where it is in its lap
+; comes from the frame's number and its own, and where it points from a hash
+; of its lap, so each lap is a new star. One that leaves the screen early is
+; dark until its lap is over.
+
+(keep-canvas)
+
+(def STEP_MS 80)
+(def STARS 160)
+(def LAP 63)     ; frames from z = 1 to the eye, at DZ a frame
+(def DZ 0.015)
+
+(def FH 0) ; rows the field has
+(def FRAME 0)
+(def paused #f)
+(def waited 0)
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+; A number from two, spread: small inputs, so the square stays an exact
+; integer.
+(def hash
+  (fn (a b)
+    (let ((h (+ (* a 7919) (* (% b 1000) 104729) 12345)))
+      (% (* h h) 1000003))))
+
+; between -0.5 and 0.5, from a hash
+(def offset (fn (a b) (- (/ (% (hash a b) 10000) 10000) 0.5)))
+
+; Star i at this frame: its place in its lap gives its depth, its lap where
+; it points. A character is twice as tall as it is wide, so y spreads twice
+; as far.
+(def star
+  (fn (i)
+    (let ((t (+ FRAME (% (hash i 0) LAP))))
+      (let ((z (- 1 (* (% t LAP) DZ)))
+            (lap (floor (/ t LAP)))
+            (cx (/ W 2))
+            (cy (/ FH 2)))
+        (let ((sx (floor (+ cx (* (/ (offset i (+ lap 1)) z) cx))))
+              (sy (floor (+ cy (* (/ (offset (+ i STARS) (+ lap 1)) z) cy 2)))))
+          (if (and (and (>= sx 0) (< sx W)) (and (>= sy 0) (< sy FH)))
+            (do
+              (fg (- 255 (floor (* z 15))))
+              (print-at sy sx
+                (cond ((> z 0.7) ".")
+                      ((> z 0.45) "·")
+                      ((> z 0.2) "+")
+                      (else "*"))))))))))
+
+(def frame
+  (fn ()
+    (do
+      (fg C_DEFAULT)
+      (fill 0 0 FH W " ")
+      (fold (fn (a i) (do (star i) a)) 0 (range STARS))
+      (fg C_DEFAULT)
+      (set FRAME (+ FRAME 1)))))

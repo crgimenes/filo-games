@@ -1,0 +1,93 @@
+; The rain of the Matrix: a drop a column, a white head and a green trail of
+; half-width katakana, each column falling at its own pace.
+;
+; Nothing is kept from one frame to the next. A column's time runs in laps a
+; little longer than the screen and the longest drop, one drop a lap; where
+; the drop is comes from the frame's number, and how long it is, how fast
+; the column falls and which glyph a cell shows come from a hash of the
+; column, the lap and the cell. The glyphs change every few frames.
+;
+; A frame costs a few hashes a column and a glyph a cell of rain on screen,
+; and a run has a step limit, so the rain is as wide as the screen up to 160
+; columns and as tall as it up to 50 rows, centred.
+
+(keep-canvas)
+
+(def STEP_MS 80)
+(def GLYPHS "ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789")
+(def NGLYPHS 66)
+
+(def RAIN_W_MAX 160)
+(def RAIN_H_MAX 50)
+
+(def FW 0)   ; the rain's columns
+(def FH 0)   ; and rows
+(def LEFT 0) ; where it starts
+(def TOP 0)
+(def FRAME 0)
+(def paused #f)
+(def waited 0)
+
+; The last row: what is running and on what, the way a terminal's status
+; line says it.
+(def footer
+  (fn (name)
+    (attr A_REV)
+    (fill (- H 1) 0 1 W " ")
+    (print-at (- H 1) 1 (str-fmt "%s %s · %dx%d" name VERSION W H))
+    (attr 0)))
+
+; A number from two, spread: small inputs, so the square stays an exact
+; integer.
+(def hash
+  (fn (a b)
+    (let ((h (+ (* a 7919) (* (% b 1000) 104729) 12345)))
+      (% (* h h) 1000003))))
+
+; the head white, the trail fading from bright green to dark
+(def shade
+  (fn (behind len)
+    (cond ((= behind 0) 231)
+          ((< behind 3) 120)
+          ((< behind (/ len 2)) 46)
+          ((< behind (- len 2)) 34)
+          (else 22))))
+
+; Column x at this frame: its pace (frames a row), its lap (the screen, the
+; longest drop and a gap), where it starts, and from those where the head
+; is and how long this lap's drop is. Only the part of the drop on screen
+; is walked: a column whose drop is above or below costs a few hashes.
+(def column
+  (fn (x)
+    (let ((pace (+ 1 (% (hash x 1) 3)))
+          (lap (+ FH 24 (% (hash x 2) (math-max 1 FH)))))
+      (let ((t (+ (floor (/ FRAME pace)) (% (hash x 3) lap))))
+        (let ((head (% t lap))
+              (len (+ 6 (% (hash x (+ 7 (floor (/ t lap)))) 18)))
+              (g (floor (/ FRAME 6))))
+          (fold
+            (fn (a behind)
+              (let ((y (- head behind)))
+                (let ((i (% (hash (+ (* x 64) y) g) NGLYPHS)))
+                  (do
+                    (fg (shade behind len))
+                    (print-at (+ TOP y) (+ LEFT x) (str-sub GLYPHS i (+ i 1)))
+                    a))))
+            0
+            (range (math-max 0 (- head (- FH 1))) (math-min len (+ head 1)))))))))
+
+(def measure
+  (fn ()
+    (set FW (math-min W RAIN_W_MAX))
+    (set FH (math-max 1 (math-min (- H 2) RAIN_H_MAX)))
+    (set LEFT (floor (/ (- W FW) 2)))
+    (set TOP (math-max 0 (floor (/ (- H 2 FH) 2))))))
+
+(def frame
+  (fn ()
+    (do
+      (fg C_DEFAULT)
+      (fill TOP LEFT FH FW " ")
+      (fold (fn (a x) (do (column x) a)) 0 (range FW))
+      (fg C_DEFAULT)
+      (set FRAME (+ FRAME 1)))))

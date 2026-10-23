@@ -1,0 +1,11 @@
+; The rain draws itself as it falls; a paint only writes the lines under it.
+; A blank canvas means the screen was just loaded, resized or painted over.
+(if FRESH (do (measure) (frame)))
+
+(footer "matrix")
+(fg 2)
+(attr A_DIM)
+(fill (- H 2) 0 1 W " ")
+(print-at (- H 2) 1 (if paused "SPACE lets it fall · ESC leaves" "SPACE holds it · ESC leaves"))
+(attr 0)
+(fg C_DEFAULT)
